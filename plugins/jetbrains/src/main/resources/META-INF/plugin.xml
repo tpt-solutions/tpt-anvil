@@ -37,6 +37,11 @@
             id="com.tptsolutions.anvil.settings"
             displayName="TPT Anvil"
         />
+        <statusBarWidgetFactory
+            implementation="com.tptsolutions.anvil.ui.AnvilStatusBarWidgetFactory"
+            id="AnvilStatusBarWidget"
+            order="last"
+        />
     </extensions>
 
     <actions>

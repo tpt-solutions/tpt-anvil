@@ -81,3 +81,65 @@ fn format_alpaca(messages: &[ChatMessage]) -> String {
         format!("{system}\n\n### Instruction:\n{instruction}\n\n### Response:\n")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anvil_core::types::{ChatMessage, Role};
+
+    fn msg(role: Role, content: &str) -> ChatMessage {
+        ChatMessage { role, content: content.to_string() }
+    }
+
+    #[test]
+    fn from_model_id_selects_llama3() {
+        assert!(matches!(PromptTemplate::from_model_id("llama-3.1-8b"), PromptTemplate::Llama3));
+        assert!(matches!(PromptTemplate::from_model_id("Meta-Llama3"), PromptTemplate::Llama3));
+    }
+
+    #[test]
+    fn from_model_id_selects_alpaca() {
+        assert!(matches!(PromptTemplate::from_model_id("alpaca-7b"), PromptTemplate::Alpaca));
+    }
+
+    #[test]
+    fn from_model_id_defaults_to_chatml() {
+        assert!(matches!(PromptTemplate::from_model_id("deepseek-coder:6.7b"), PromptTemplate::ChatMl));
+        assert!(matches!(PromptTemplate::from_model_id("qwen2.5-coder:7b"), PromptTemplate::ChatMl));
+    }
+
+    #[test]
+    fn chatml_format_contains_tokens() {
+        let messages = vec![
+            msg(Role::System, "You are helpful."),
+            msg(Role::User, "Hello!"),
+        ];
+        let out = format_prompt(&messages, PromptTemplate::ChatMl);
+        assert!(out.contains("<|im_start|>system"));
+        assert!(out.contains("<|im_start|>user"));
+        assert!(out.contains("<|im_start|>assistant"));
+        assert!(out.contains("You are helpful."));
+        assert!(out.contains("Hello!"));
+    }
+
+    #[test]
+    fn llama3_format_contains_header_tokens() {
+        let messages = vec![msg(Role::User, "Explain Rust lifetimes.")];
+        let out = format_prompt(&messages, PromptTemplate::Llama3);
+        assert!(out.contains("<|begin_of_text|>"));
+        assert!(out.contains("<|start_header_id|>user<|end_header_id|>"));
+        assert!(out.contains("Explain Rust lifetimes."));
+    }
+
+    #[test]
+    fn alpaca_format_with_system() {
+        let messages = vec![
+            msg(Role::System, "Be concise."),
+            msg(Role::User, "What is 2+2?"),
+        ];
+        let out = format_prompt(&messages, PromptTemplate::Alpaca);
+        assert!(out.contains("Be concise."));
+        assert!(out.contains("### Instruction:"));
+        assert!(out.contains("### Response:"));
+    }
+}

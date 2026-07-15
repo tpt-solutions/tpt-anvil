@@ -29,6 +29,9 @@ tree-sitter-go = "0.23"
 tree-sitter-java = "0.23"
 tree-sitter-c = "0.23"
 tree-sitter-cpp = "0.23"
+tree-sitter-ruby = "0.23"
+tree-sitter-php = "0.23"
+tree-sitter-c-sharp = "0.23"
 
 # SQLite vector store
 rusqlite = { version = "0.31", features = ["bundled"] }

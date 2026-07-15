@@ -155,3 +155,42 @@ impl CommandHandler {
         Ok((full_response, patch))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_slash_commands() {
+        let cases = [
+            ("/generate a REST endpoint", Command::Generate, "a REST endpoint"),
+            ("/test", Command::Test, ""),
+            ("/explain focus on concurrency", Command::Explain, "focus on concurrency"),
+            ("/fix TypeError: cannot read property", Command::Fix, "TypeError: cannot read property"),
+            ("/docs include examples", Command::Docs, "include examples"),
+            ("what does this do?", Command::Chat, "what does this do?"),
+        ];
+
+        for (input, expected_cmd, expected_rest) in cases {
+            let (cmd, rest) = Command::parse(input);
+            assert_eq!(cmd, expected_cmd, "input: {input}");
+            assert_eq!(rest, expected_rest, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn parse_strips_whitespace() {
+        let (cmd, rest) = Command::parse("  /generate   a function  ");
+        assert_eq!(cmd, Command::Generate);
+        assert_eq!(rest, "a function");
+    }
+
+    #[test]
+    fn command_as_str_round_trips() {
+        assert_eq!(Command::Generate.as_str(), "/generate");
+        assert_eq!(Command::Test.as_str(), "/test");
+        assert_eq!(Command::Explain.as_str(), "/explain");
+        assert_eq!(Command::Fix.as_str(), "/fix");
+        assert_eq!(Command::Docs.as_str(), "/docs");
+    }
+}

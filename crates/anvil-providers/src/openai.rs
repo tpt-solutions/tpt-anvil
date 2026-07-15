@@ -11,7 +11,7 @@ use reqwest::{Client, header};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-use crate::provider::CloudProvider;
+use crate::{provider::CloudProvider, retry::{with_retry, RetryConfig}};
 
 pub struct OpenAiProvider {
     api_key: String,
@@ -112,45 +112,48 @@ impl CloudProvider for OpenAiProvider {
     }
 
     async fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
-        let model = request.model.as_deref().unwrap_or(&self.default_model);
-        let messages: Vec<OaiMessage> = request
-            .messages
-            .iter()
-            .map(|m| OaiMessage {
-                role: match m.role { Role::System => "system", Role::User => "user", Role::Assistant => "assistant" },
-                content: &m.content,
+        let retry_cfg = RetryConfig::default();
+        with_retry(&retry_cfg, || async {
+            let model = request.model.as_deref().unwrap_or(&self.default_model);
+            let messages: Vec<OaiMessage> = request
+                .messages
+                .iter()
+                .map(|m| OaiMessage {
+                    role: match m.role { Role::System => "system", Role::User => "user", Role::Assistant => "assistant" },
+                    content: &m.content,
+                })
+                .collect();
+
+            let body = OaiRequest { model, messages, max_tokens: request.max_tokens, temperature: request.temperature, stream: false };
+            let url = format!("{}/chat/completions", self.base_url);
+
+            let resp = self
+                .client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| AnvilError::Provider(e.to_string()))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(AnvilError::Provider(format!("OpenAI API error {status}: {text}")));
+            }
+
+            let parsed: OaiResponse = resp.json().await.map_err(|e| AnvilError::Provider(e.to_string()))?;
+
+            Ok(CompletionResponse {
+                content: parsed.choices.into_iter().next().map(|c| c.message.content).unwrap_or_default(),
+                model: parsed.model,
+                usage: parsed.usage.map(|u| TokenUsage {
+                    prompt_tokens: u.prompt_tokens,
+                    completion_tokens: u.completion_tokens,
+                    total_tokens: u.total_tokens,
+                }),
             })
-            .collect();
-
-        let body = OaiRequest { model, messages, max_tokens: request.max_tokens, temperature: request.temperature, stream: false };
-        let url = format!("{}/chat/completions", self.base_url);
-
-        let resp = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AnvilError::Provider(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(AnvilError::Provider(format!("OpenAI API error {status}: {text}")));
-        }
-
-        let parsed: OaiResponse = resp.json().await.map_err(|e| AnvilError::Provider(e.to_string()))?;
-
-        Ok(CompletionResponse {
-            content: parsed.choices.into_iter().next().map(|c| c.message.content).unwrap_or_default(),
-            model: parsed.model,
-            usage: parsed.usage.map(|u| TokenUsage {
-                prompt_tokens: u.prompt_tokens,
-                completion_tokens: u.completion_tokens,
-                total_tokens: u.total_tokens,
-            }),
-        })
+        }).await
     }
 
     async fn stream(&self, request: &CompletionRequest, tx: mpsc::Sender<StreamChunk>) -> Result<()> {

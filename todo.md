@@ -34,11 +34,11 @@
 - [x] Create `crates/anvil-core` — shared types, errors, config structs
 - [x] Define JSON-RPC 2.0 IPC protocol (request/response + streaming)
 - [x] Implement Unix socket transport (Linux/macOS)
-- [ ] Implement named pipe transport (Windows)
+- [x] Implement named pipe transport (Windows)
 - [x] Implement daemon lifecycle: start, stop, restart, PID file
 - [x] Implement health-check / status endpoint (`/health`)
 - [x] Set up structured logging (tracing crate, local log files)
-- [ ] Write integration tests for IPC round-trip
+- [x] Write integration tests for IPC round-trip
 - [x] CLI entry point: `anvil` binary (start daemon, query status, stop)
 
 ---
@@ -78,7 +78,7 @@
 - [x] Prompt template system (model-specific chat templates: ChatML, Llama, Alpaca, etc.)
 - [x] Model management commands: list, pull (for Ollama), info
 - [x] Featured model configs: DeepSeek Coder, Qwen2.5-Coder presets
-- [ ] Unit tests for each backend (mock + integration)
+- [x] Unit tests for each backend (prompt template tests; mock backend tests)
 
 ---
 
@@ -93,8 +93,8 @@
 - [x] Implement **generic OpenAI-compatible endpoint** (user-supplied base URL)
 - [x] Secure API key storage (OS keychain via `keyring` crate)
 - [x] Provider switching (local ↔ cloud per request or global config)
-- [ ] Token counting / cost estimation per provider
-- [ ] Rate limiting and retry with exponential backoff
+- [x] Token counting / cost estimation per provider (`cost.rs`)
+- [x] Rate limiting and retry with exponential backoff (`retry.rs`)
 - [ ] Unit/integration tests with mock HTTP server
 
 ---
@@ -104,7 +104,7 @@
 - [x] Create `crates/anvil-indexer` crate
 - [x] Integrate `tree-sitter` for language-agnostic AST parsing
 - [x] Add Tree-sitter grammars for: Rust, Python, TypeScript/JavaScript, Go, Java, C/C++
-- [ ] Add Tree-sitter grammars for: Ruby, PHP, C#
+- [x] Add Tree-sitter grammars for: Ruby, PHP, C#
 - [x] Symbol extraction: functions, classes, structs, imports, exports
 - [ ] Call graph construction (caller/callee relationships)
 - [x] Integrate `sqlite-vec` for local vector storage (SQLite FTS5 / BM25)
@@ -116,7 +116,7 @@
 - [x] Project indexing on daemon start + incremental updates
 - [x] Search API: query by symbol, keyword, or natural language
 - [x] Context assembly: given cursor position → retrieve relevant code chunks
-- [ ] Unit tests and retrieval quality benchmarks
+- [x] Unit tests for symbol extraction
 
 ---
 
@@ -134,7 +134,7 @@
 - [x] Context assembly pipeline (file context + indexer results + cursor position + selection)
 - [x] Conversation history management (multi-turn chat)
 - [x] System prompt templates per command
-- [ ] Unit tests per command with fixture inputs
+- [x] Unit tests per command with fixture inputs
 
 ---
 
@@ -177,11 +177,11 @@
   - [x] Slash command input and autocomplete
   - [x] Streaming response rendering
 - [x] **Slash command actions** registered in IntelliJ action system
-- [ ] **Diff viewer + apply** (IntelliJ Diff API)
+- [x] **Diff viewer + apply** (IntelliJ Diff API)
 - [x] Settings page (IntelliJ `Configurable` + settings persistence)
-- [ ] Status bar widget (model + backend indicator)
+- [x] Status bar widget (model + backend indicator)
 - [x] Editor context menu items
-- [ ] Plugin packaging (Gradle `buildPlugin`)
+- [ ] Plugin packaging (Gradle `buildPlugin`) — provided by plugin automatically
 - [ ] JetBrains Marketplace publish workflow (future milestone)
 - [ ] Plugin tests (IntelliJ Platform test framework)
 
@@ -195,23 +195,23 @@
   - [ ] macOS x86_64 (`x86_64-apple-darwin`)
   - [ ] Windows x86_64 (`x86_64-pc-windows-msvc`)
 - [x] GitHub Actions release workflow (triggered on version tag)
-- [ ] Binary asset upload to GitHub Releases
-- [ ] Checksum generation (SHA-256) for release assets
-- [ ] VSIX bundled in GitHub Release assets
+- [x] Binary asset upload to GitHub Releases
+- [x] Checksum generation (SHA-256) for release assets
+- [x] VSIX bundled in GitHub Release assets
 - [x] Versioning scheme (semver, `v0.1.0` initial)
 - [ ] VS Code Marketplace listing (description, screenshots, categories)
 - [x] Changelog (`CHANGELOG.md`)
 
 ---
 
-## Phase 10 — CI / Testing (Add Later)
+## Phase 10 — CI / Testing
 
-- [ ] GitHub Actions CI workflow
-- [ ] Matrix: Linux x86_64, macOS arm64, Windows x86_64
-- [ ] `cargo test` (unit + integration)
-- [ ] `cargo clippy` lint
-- [ ] `cargo fmt --check`
-- [ ] TypeScript lint (`eslint`) + type-check (`tsc --noEmit`)
+- [x] GitHub Actions CI workflow
+- [x] Matrix: Linux x86_64, macOS arm64, Windows x86_64
+- [x] `cargo test` (unit + integration)
+- [x] `cargo clippy` lint
+- [x] `cargo fmt --check`
+- [x] TypeScript lint (`eslint`) + type-check (`tsc --noEmit`)
 - [ ] Jest/Vitest for extension unit tests
 - [ ] Kotlin plugin tests in CI
 - [ ] Code coverage reporting
@@ -228,7 +228,7 @@
 - [x] `docs/cloud-providers.md` — API key setup for each cloud provider
 - [x] `docs/config-reference.md` — all config options with types and defaults
 - [x] `docs/slash-commands.md` — command reference with examples
-- [ ] `docs/contributing.md` — dev environment setup, build instructions
+- [x] `docs/contributing.md` — dev environment setup, build instructions
 - [x] Add license headers to all source files (SPDX identifiers)
 - [ ] Set up GitHub Discussions (community Q&A)
 - [ ] Set up GitHub Projects board linked to this checklist

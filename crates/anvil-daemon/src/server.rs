@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use anvil_capabilities::commands::CommandHandler;
-use anvil_config::{loader::ConfigLoader, watcher::ConfigWatcher};
+use anvil_config::loader::ConfigLoader;
 use anvil_core::{
     ipc::{JsonRpcRequest, JsonRpcResponse, SlashCommandParams, StatusResponse},
     types::StreamChunk,
@@ -14,9 +14,8 @@ use anvil_core::{
 use anvil_inference::registry::BackendRegistry;
 use anvil_providers::registry::ProviderRegistry;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixListener;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::pid;
 
@@ -33,7 +32,33 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
 
     let handler = Arc::new(CommandHandler::new(backend, cloud));
 
-    let socket_path = socket_path();
+    pid::write_pid()?;
+    info!("backend: {} | model: {}", cfg.inference.backend, cfg.inference.model);
+
+    let shutdown = Arc::new(tokio::sync::Notify::new());
+    let shutdown_clone = Arc::clone(&shutdown);
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        shutdown_clone.notify_one();
+    });
+
+    #[cfg(unix)]
+    run_unix(handler, shutdown).await?;
+
+    #[cfg(windows)]
+    run_windows(handler, shutdown).await?;
+
+    pid::remove_pid();
+    Ok(())
+}
+
+// ── Unix socket transport ──────────────────────────────────────────────────
+
+#[cfg(unix)]
+async fn run_unix(handler: Arc<CommandHandler>, shutdown: Arc<tokio::sync::Notify>) -> Result<()> {
+    use tokio::net::UnixListener;
+
+    let socket_path = unix_socket_path();
     if socket_path.exists() {
         std::fs::remove_file(&socket_path)?;
     }
@@ -42,17 +67,7 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
     let listener = UnixListener::bind(&socket_path)
         .with_context(|| format!("failed to bind IPC socket at {}", socket_path.display()))?;
 
-    pid::write_pid()?;
     info!("Anvil daemon listening on {}", socket_path.display());
-    info!("backend: {} | model: {}", cfg.inference.backend, cfg.inference.model);
-
-    // Graceful shutdown on SIGTERM/SIGINT
-    let shutdown = Arc::new(tokio::sync::Notify::new());
-    let shutdown_clone = Arc::clone(&shutdown);
-    tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.ok();
-        shutdown_clone.notify_one();
-    });
 
     loop {
         tokio::select! {
@@ -60,7 +75,10 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
                 match accept {
                     Ok((stream, _)) => {
                         let handler = Arc::clone(&handler);
-                        tokio::spawn(handle_connection(stream, handler));
+                        tokio::spawn(async move {
+                            let (reader, writer) = stream.into_split();
+                            handle_rpc(reader, writer, handler).await;
+                        });
                     }
                     Err(e) => error!("accept error: {e}"),
                 }
@@ -72,16 +90,70 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
         }
     }
 
-    pid::remove_pid();
     let _ = std::fs::remove_file(&socket_path);
     Ok(())
 }
 
-async fn handle_connection(
-    stream: tokio::net::UnixStream,
-    handler: Arc<CommandHandler>,
-) {
-    let (reader, mut writer) = stream.into_split();
+#[cfg(unix)]
+pub fn unix_socket_path() -> std::path::PathBuf {
+    dirs::runtime_dir()
+        .or_else(|| dirs::data_local_dir())
+        .unwrap_or_else(|| std::env::temp_dir())
+        .join("anvil")
+        .join("anvil.sock")
+}
+
+// ── Windows named pipe transport ──────────────────────────────────────────
+
+#[cfg(windows)]
+fn pipe_name() -> &'static str {
+    r"\\.\pipe\anvil"
+}
+
+#[cfg(windows)]
+async fn run_windows(handler: Arc<CommandHandler>, shutdown: Arc<tokio::sync::Notify>) -> Result<()> {
+    use tokio::net::windows::named_pipe::ServerOptions;
+
+    let name = pipe_name();
+    info!("Anvil daemon listening on {}", name);
+
+    loop {
+        let pipe = ServerOptions::new()
+            .first_pipe_instance(false)
+            .create(name)
+            .with_context(|| format!("failed to create named pipe {name}"))?;
+
+        let handler = Arc::clone(&handler);
+        let shutdown_clone = Arc::clone(&shutdown);
+
+        tokio::select! {
+            connect = pipe.connect() => {
+                match connect {
+                    Ok(()) => {
+                        tokio::spawn(async move {
+                            let (reader, writer) = tokio::io::split(pipe);
+                            handle_rpc(reader, writer, handler).await;
+                        });
+                    }
+                    Err(e) => error!("pipe connect error: {e}"),
+                }
+            }
+            _ = shutdown_clone.notified() => {
+                info!("shutting down");
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
+// ── Shared JSON-RPC handler ────────────────────────────────────────────────
+
+async fn handle_rpc<R, W>(reader: R, mut writer: W, handler: Arc<CommandHandler>)
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
     let mut lines = BufReader::new(reader).lines();
 
     while let Ok(Some(line)) = lines.next_line().await {
@@ -127,7 +199,6 @@ async fn handle_connection(
                     let _ = handler_clone.run(&command, &ctx, conv_id.as_deref(), token_tx).await;
                 });
 
-                // Stream tokens as JSON-RPC notifications
                 let mut full = String::new();
                 while let Some(chunk) = token_rx.recv().await {
                     full.push_str(&chunk.delta);
@@ -157,12 +228,4 @@ async fn send_line<W: AsyncWriteExt + Unpin>(writer: &mut W, value: &impl serde:
     if let Ok(line) = serde_json::to_string(value) {
         let _ = writer.write_all(format!("{line}\n").as_bytes()).await;
     }
-}
-
-fn socket_path() -> std::path::PathBuf {
-    dirs::runtime_dir()
-        .or_else(|| dirs::data_local_dir())
-        .unwrap_or_else(|| std::env::temp_dir())
-        .join("anvil")
-        .join("anvil.sock")
 }

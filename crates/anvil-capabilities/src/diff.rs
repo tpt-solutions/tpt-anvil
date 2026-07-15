@@ -117,3 +117,53 @@ pub fn extract_code_block(text: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_code_block_rust() {
+        let text = "Here is the code:\n```rust\nfn hello() {}\n```\nDone.";
+        let block = extract_code_block(text).unwrap();
+        assert_eq!(block, "fn hello() {}");
+    }
+
+    #[test]
+    fn extract_code_block_unlabeled() {
+        let text = "Result:\n```\nlet x = 1;\n```";
+        let block = extract_code_block(text).unwrap();
+        assert_eq!(block, "let x = 1;");
+    }
+
+    #[test]
+    fn extract_code_block_none() {
+        let text = "No code here at all.";
+        assert!(extract_code_block(text).is_none());
+    }
+
+    #[test]
+    fn compute_diff_produces_patch_header() {
+        let orig = "fn foo() {\n    1\n}\n";
+        let new = "fn foo() {\n    2\n}\n";
+        let patch = DiffEngine::compute_diff(orig, new, "src/lib.rs");
+        assert!(patch.unified_diff.contains("--- a/src/lib.rs"));
+        assert!(patch.unified_diff.contains("+++ b/src/lib.rs"));
+        assert!(patch.unified_diff.contains("-    1"));
+        assert!(patch.unified_diff.contains("+    2"));
+    }
+
+    #[test]
+    fn compute_diff_identical_files_no_hunks() {
+        let content = "fn foo() {}\n";
+        let patch = DiffEngine::compute_diff(content, content, "src/lib.rs");
+        assert!(!patch.unified_diff.contains("@@"));
+    }
+
+    #[test]
+    fn extract_diff_from_model_output() {
+        let output = "```diff\n--- a/main.rs\n+++ b/main.rs\n@@ -1 +1 @@\n-old\n+new\n```";
+        let patch = DiffEngine::extract_diff(output, "main.rs").unwrap();
+        assert!(patch.unified_diff.contains("--- a/main.rs"));
+    }
+}

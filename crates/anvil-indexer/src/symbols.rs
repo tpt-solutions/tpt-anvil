@@ -2,6 +2,9 @@
 // Copyright (c) 2026 TPT Solutions
 
 use serde::{Deserialize, Serialize};
+use tree_sitter_c_sharp;
+use tree_sitter_php;
+use tree_sitter_ruby;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Symbol {
@@ -40,6 +43,9 @@ pub fn extract_symbols(source: &str, language: &str, file_path: &str) -> Vec<Sym
         "go" => extract_with_parser(source, file_path, tree_sitter_go::LANGUAGE.into(), parse_generic_symbols),
         "java" => extract_with_parser(source, file_path, tree_sitter_java::LANGUAGE.into(), parse_generic_symbols),
         "c" => extract_with_parser(source, file_path, tree_sitter_c::LANGUAGE.into(), parse_generic_symbols),
+        "ruby" => extract_with_parser(source, file_path, tree_sitter_ruby::LANGUAGE.into(), parse_generic_symbols),
+        "php" => extract_with_parser(source, file_path, tree_sitter_php::language_php().into(), parse_generic_symbols),
+        "c_sharp" | "csharp" => extract_with_parser(source, file_path, tree_sitter_c_sharp::LANGUAGE.into(), parse_generic_symbols),
         _ => vec![],
     }
 }
@@ -159,5 +165,52 @@ fn collect_generic_nodes(
             }
         }
         cursor.goto_parent();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_rust_function() {
+        let src = "fn greet(name: &str) -> String { format!(\"Hello, {}!\", name) }";
+        let syms = extract_symbols(src, "rust", "src/lib.rs");
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "greet");
+        assert_eq!(syms[0].kind, SymbolKind::Function);
+    }
+
+    #[test]
+    fn extract_rust_struct_and_impl() {
+        let src = "struct Foo { x: i32 }\nimpl Foo { fn bar(&self) {} }";
+        let syms = extract_symbols(src, "rust", "src/lib.rs");
+        let kinds: Vec<_> = syms.iter().map(|s| &s.kind).collect();
+        assert!(kinds.contains(&&SymbolKind::Struct));
+        assert!(kinds.contains(&&SymbolKind::Class)); // impl_item
+    }
+
+    #[test]
+    fn extract_python_function_and_class() {
+        let src = "class Animal:\n    def speak(self):\n        pass\n";
+        let syms = extract_symbols(src, "python", "animal.py");
+        let names: Vec<_> = syms.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"Animal"), "expected class Animal, got {:?}", names);
+        assert!(names.contains(&"speak"), "expected method speak, got {:?}", names);
+    }
+
+    #[test]
+    fn unknown_language_returns_empty() {
+        let syms = extract_symbols("some code", "brainfuck", "file.bf");
+        assert!(syms.is_empty());
+    }
+
+    #[test]
+    fn symbol_line_numbers_are_correct() {
+        let src = "fn first() {}\n\nfn second() {}";
+        let syms = extract_symbols(src, "rust", "src/lib.rs");
+        assert_eq!(syms.len(), 2);
+        assert_eq!(syms[0].start_line, 0);
+        assert_eq!(syms[1].start_line, 2);
     }
 }
