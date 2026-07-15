@@ -170,15 +170,24 @@ impl CloudProvider for OpenAiProvider {
         });
 
         let url = format!("{}/chat/completions", self.base_url);
-        let mut stream = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AnvilError::Provider(e.to_string()))?
-            .bytes_stream();
+        let retry_cfg = RetryConfig::default();
+        let mut stream = with_retry(&retry_cfg, || async {
+            let resp = self
+                .client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| AnvilError::Provider(e.to_string()))?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(AnvilError::Provider(format!("OpenAI API error {status}: {text}")));
+            }
+            Ok(resp.bytes_stream())
+        })
+        .await?;
 
         while let Some(chunk) = stream.next().await {
             let bytes = chunk.map_err(|e| AnvilError::Provider(e.to_string()))?;
