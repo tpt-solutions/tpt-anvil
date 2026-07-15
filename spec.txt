@@ -1,0 +1,16 @@
+TPT Anvil (AI-Powered Development Environment)
+The "Open Copilot/Cursor"
+AI coding assistants have completely transformed software development, but the space is dominated by GitHub Copilot (Microsoft) and Cursor, both of which are commercial, cloud-dependent, and raise serious privacy concerns (your code is sent to their servers). There is no good open-source alternative that runs locally, respects privacy, and integrates deeply with the IDE.
+TPT Anvil is a fully open-source, locally-runnable AI development environment. It combines:
+A local LLM inference engine (optimized for consumer GPUs via Wasm/WebGPU)
+Deep IDE integration (VS Code extension, JetBrains plugin, or standalone editor)
+Codebase-aware context (indexes your entire repo locally, understands project structure)
+Multi-modal capabilities (code generation, refactoring, test writing, documentation)
+Privacy-first architecture (everything runs on your machine, zero cloud dependency)
+Why this matters: AI coding tools are becoming as essential as compilers. Leaving this space entirely in commercial hands means developers either pay $20-40/month per seat or sacrifice productivity. Anvil democratizes AI-assisted development.
+Tech Stack:
+LLM Inference: Rust with llama.cpp or candle for local model execution
+GPU Acceleration: WebGPU / CUDA / ROCm for consumer hardware
+Code Indexing: Tree-sitter for language-agnostic AST parsing and semantic search
+IDE Integration: TypeScript for VS Code extension, Kotlin for JetBrains
+Privacy: 100% local execution, optional cloud fallback for larger models
