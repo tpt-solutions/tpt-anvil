@@ -1,0 +1,19 @@
+[package]
+name = "anvil-config"
+description = "Configuration loading and validation for TPT Anvil"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anvil-core = { path = "../anvil-core" }
+serde = { workspace = true }
+toml = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+dirs = { workspace = true }
+tokio = { workspace = true }
+notify = { workspace = true }
+tracing = { workspace = true }

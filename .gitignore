@@ -1,0 +1,60 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Node.js
+node_modules/
+dist/
+out/
+*.vsix
+.vscode-test/
+
+# JVM / Kotlin / Gradle
+.gradle/
+build/
+*.class
+*.jar
+*.war
+*.ear
+.idea/
+*.iml
+local.properties
+plugins/jetbrains/.kotlin/
+
+# Model weights (never commit these)
+*.gguf
+*.ggml
+*.bin
+*.safetensors
+*.pt
+*.pth
+models/
+
+# Anvil runtime
+.anvil/index/
+.anvil/*.sock
+.anvil/*.pid
+~/.config/anvil/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+*.swp
+*.swo
+*~
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+
+# Logs
+*.log
+logs/
+
+# Env / secrets
+.env
+.env.*
+*.key

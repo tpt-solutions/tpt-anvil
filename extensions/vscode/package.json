@@ -1,0 +1,109 @@
+{
+  "name": "tpt-anvil",
+  "displayName": "TPT Anvil",
+  "description": "Local AI coding assistant — privacy-first, runs on your machine",
+  "version": "0.1.0",
+  "publisher": "tpt-solutions",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tpt-solutions/tpt-anvil"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["AI", "Other"],
+  "keywords": ["ai", "copilot", "llm", "local", "privacy"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "TPT Anvil",
+      "properties": {
+        "anvil.backend": {
+          "type": "string",
+          "default": "ollama",
+          "enum": ["ollama", "llama_cpp", "candle"],
+          "description": "Local inference backend"
+        },
+        "anvil.model": {
+          "type": "string",
+          "default": "deepseek-coder:6.7b",
+          "description": "Model to use for completions"
+        },
+        "anvil.ollamaUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama server URL"
+        },
+        "anvil.cloudProvider": {
+          "type": "string",
+          "default": "",
+          "enum": ["", "openai", "anthropic", "openrouter", "azure", "custom"],
+          "description": "Cloud provider for fallback (leave empty for local-only)"
+        },
+        "anvil.maxTokens": {
+          "type": "number",
+          "default": 2048,
+          "description": "Maximum tokens to generate"
+        },
+        "anvil.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Sampling temperature (0.0–1.0)"
+        }
+      }
+    },
+    "commands": [
+      { "command": "anvil.openChat", "title": "Anvil: Open Chat Panel" },
+      { "command": "anvil.generate", "title": "Anvil: Generate Code" },
+      { "command": "anvil.test", "title": "Anvil: Generate Tests" },
+      { "command": "anvil.explain", "title": "Anvil: Explain Selection" },
+      { "command": "anvil.fix", "title": "Anvil: Fix Selection" },
+      { "command": "anvil.docs", "title": "Anvil: Generate Docs" },
+      { "command": "anvil.status", "title": "Anvil: Show Status" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "anvil.explain", "when": "editorHasSelection", "group": "anvil" },
+        { "command": "anvil.fix", "when": "editorHasSelection", "group": "anvil" },
+        { "command": "anvil.test", "when": "editorHasSelection", "group": "anvil" },
+        { "command": "anvil.docs", "when": "editorHasSelection", "group": "anvil" }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "anvil-sidebar",
+          "title": "TPT Anvil",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "anvil-sidebar": [
+        {
+          "type": "webview",
+          "id": "anvil.chatPanel",
+          "name": "Chat"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "dev": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0"
+  }
+}

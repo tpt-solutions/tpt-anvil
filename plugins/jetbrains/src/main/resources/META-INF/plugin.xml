@@ -1,0 +1,63 @@
+<idea-plugin>
+    <id>com.tptsolutions.anvil</id>
+    <name>TPT Anvil</name>
+    <vendor url="https://github.com/tpt-solutions/tpt-anvil">TPT Solutions</vendor>
+    <version>0.1.0</version>
+
+    <description><![CDATA[
+        <b>TPT Anvil</b> — Open-source, locally-runnable AI coding assistant.<br/>
+        All AI runs on your machine. Your code never leaves. No subscriptions.
+        <br/><br/>
+        <b>Features:</b>
+        <ul>
+            <li>Chat panel with full codebase context</li>
+            <li>/generate, /test, /explain, /fix, /docs slash commands</li>
+            <li>Diff-based code edits with one-click apply</li>
+            <li>Local LLM (Ollama, llama.cpp, candle) or cloud fallback</li>
+        </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+            id="Anvil"
+            displayName="Anvil Chat"
+            anchor="right"
+            factoryClass="com.tptsolutions.anvil.ui.AnvilToolWindowFactory"
+            icon="/icons/anvil.svg"
+        />
+        <applicationService
+            serviceInterface="com.tptsolutions.anvil.settings.AnvilSettings"
+            serviceImplementation="com.tptsolutions.anvil.settings.AnvilSettings"
+        />
+        <applicationConfigurable
+            parentId="tools"
+            instance="com.tptsolutions.anvil.settings.AnvilConfigurable"
+            id="com.tptsolutions.anvil.settings"
+            displayName="TPT Anvil"
+        />
+    </extensions>
+
+    <actions>
+        <group id="AnvilActions" text="Anvil" popup="true">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <action id="Anvil.Explain"
+                    class="com.tptsolutions.anvil.actions.ExplainAction"
+                    text="Explain with Anvil"
+                    description="Explain selected code"/>
+            <action id="Anvil.Fix"
+                    class="com.tptsolutions.anvil.actions.FixAction"
+                    text="Fix with Anvil"
+                    description="Fix selected code"/>
+            <action id="Anvil.GenerateTest"
+                    class="com.tptsolutions.anvil.actions.GenerateTestAction"
+                    text="Generate Tests with Anvil"
+                    description="Generate unit tests for selected code"/>
+            <action id="Anvil.GenerateDocs"
+                    class="com.tptsolutions.anvil.actions.GenerateDocsAction"
+                    text="Generate Docs with Anvil"
+                    description="Generate documentation for selected code"/>
+        </group>
+    </actions>
+</idea-plugin>

@@ -1,0 +1,34 @@
+[package]
+name = "anvil-daemon"
+description = "TPT Anvil background daemon and CLI"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "anvil"
+path = "src/main.rs"
+
+[dependencies]
+anvil-core = { path = "../anvil-core" }
+anvil-config = { path = "../anvil-config" }
+anvil-inference = { path = "../anvil-inference" }
+anvil-providers = { path = "../anvil-providers" }
+anvil-indexer = { path = "../anvil-indexer" }
+anvil-capabilities = { path = "../anvil-capabilities" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+dirs = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

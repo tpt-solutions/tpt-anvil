@@ -1,0 +1,40 @@
+[package]
+name = "anvil-inference"
+description = "Local LLM inference backends for TPT Anvil"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["ollama"]
+ollama = ["reqwest"]
+llama-cpp = ["llama-cpp-2"]
+candle = ["candle-core", "candle-transformers", "candle-nn", "hf-hub", "tokenizers"]
+
+[dependencies]
+anvil-core = { path = "../anvil-core" }
+anvil-config = { path = "../anvil-config" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+
+futures-util = "0.3"
+
+# Ollama backend
+reqwest = { workspace = true, optional = true }
+
+# llama.cpp backend (optional)
+llama-cpp-2 = { version = "0.1", optional = true }
+
+# candle backend (optional)
+candle-core = { version = "0.8", optional = true }
+candle-transformers = { version = "0.8", optional = true }
+candle-nn = { version = "0.8", optional = true }
+hf-hub = { version = "0.3", features = ["tokio"], optional = true }
+tokenizers = { version = "0.21", optional = true }

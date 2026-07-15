@@ -1,0 +1,22 @@
+[package]
+name = "anvil-capabilities"
+description = "AI slash command capabilities for TPT Anvil"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anvil-core = { path = "../anvil-core" }
+anvil-config = { path = "../anvil-config" }
+anvil-inference = { path = "../anvil-inference" }
+anvil-providers = { path = "../anvil-providers" }
+anvil-indexer = { path = "../anvil-indexer" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
