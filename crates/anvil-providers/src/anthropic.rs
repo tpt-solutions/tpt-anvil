@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use async_trait::async_trait;
 use anvil_core::{
+    types::{
+        BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Role, StreamChunk,
+        TokenUsage,
+    },
     AnvilError, Result,
-    types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Role, StreamChunk, TokenUsage},
 };
+use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tokio::sync::mpsc;
 
 use crate::provider::CloudProvider;
@@ -16,12 +19,27 @@ use crate::provider::CloudProvider;
 pub struct AnthropicProvider {
     api_key: String,
     default_model: String,
+    base_url: String,
     client: Client,
 }
 
 impl AnthropicProvider {
     pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
-        Self { api_key: api_key.into(), default_model: model.into(), client: Client::new() }
+        Self::with_base_url(api_key, model, "https://api.anthropic.com/v1")
+    }
+
+    /// Construct with a custom base URL (used for testing against a mock server).
+    pub fn with_base_url(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        base_url: impl Into<String>,
+    ) -> Self {
+        Self {
+            api_key: api_key.into(),
+            default_model: model.into(),
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+            client: Client::new(),
+        }
     }
 }
 
@@ -69,23 +87,39 @@ impl CloudProvider for AnthropicProvider {
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         Ok(vec![
-            ModelInfo { id: "claude-sonnet-5".into(), name: "Claude Sonnet 5".into(), context_length: 200_000, backend: BackendKind::Anthropic },
-            ModelInfo { id: "claude-haiku-4-5-20251001".into(), name: "Claude Haiku 4.5".into(), context_length: 200_000, backend: BackendKind::Anthropic },
+            ModelInfo {
+                id: "claude-sonnet-5".into(),
+                name: "Claude Sonnet 5".into(),
+                context_length: 200_000,
+                backend: BackendKind::Anthropic,
+            },
+            ModelInfo {
+                id: "claude-haiku-4-5-20251001".into(),
+                name: "Claude Haiku 4.5".into(),
+                context_length: 200_000,
+                backend: BackendKind::Anthropic,
+            },
         ])
     }
 
     async fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let model = request.model.as_deref().unwrap_or(&self.default_model);
 
-        let system = request.messages.iter().find(|m| m.role == Role::System).map(|m| m.content.as_str());
+        let system = request
+            .messages
+            .iter()
+            .find(|m| m.role == Role::System)
+            .map(|m| m.content.as_str());
         let messages: Vec<serde_json::Value> = request
             .messages
             .iter()
             .filter(|m| m.role != Role::System)
-            .map(|m| serde_json::json!({
-                "role": if m.role == Role::User { "user" } else { "assistant" },
-                "content": m.content,
-            }))
+            .map(|m| {
+                serde_json::json!({
+                    "role": if m.role == Role::User { "user" } else { "assistant" },
+                    "content": m.content,
+                })
+            })
             .collect();
 
         let mut body = serde_json::json!({
@@ -99,7 +133,7 @@ impl CloudProvider for AnthropicProvider {
 
         let resp = self
             .client
-            .post("https://api.anthropic.com/v1/messages")
+            .post(format!("{}/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .json(&body)
@@ -110,11 +144,22 @@ impl CloudProvider for AnthropicProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(AnvilError::Provider(format!("Anthropic API error {status}: {text}")));
+            return Err(AnvilError::Provider(format!(
+                "Anthropic API error {status}: {text}"
+            )));
         }
 
-        let parsed: AnthropicResponse = resp.json().await.map_err(|e| AnvilError::Provider(e.to_string()))?;
-        let text = parsed.content.into_iter().filter(|c| c.kind == "text").map(|c| c.text).collect::<Vec<_>>().join("");
+        let parsed: AnthropicResponse = resp
+            .json()
+            .await
+            .map_err(|e| AnvilError::Provider(e.to_string()))?;
+        let text = parsed
+            .content
+            .into_iter()
+            .filter(|c| c.kind == "text")
+            .map(|c| c.text)
+            .collect::<Vec<_>>()
+            .join("");
 
         Ok(CompletionResponse {
             content: text,
@@ -127,17 +172,27 @@ impl CloudProvider for AnthropicProvider {
         })
     }
 
-    async fn stream(&self, request: &CompletionRequest, tx: mpsc::Sender<StreamChunk>) -> Result<()> {
+    async fn stream(
+        &self,
+        request: &CompletionRequest,
+        tx: mpsc::Sender<StreamChunk>,
+    ) -> Result<()> {
         let model = request.model.as_deref().unwrap_or(&self.default_model);
-        let system = request.messages.iter().find(|m| m.role == Role::System).map(|m| m.content.clone());
+        let system = request
+            .messages
+            .iter()
+            .find(|m| m.role == Role::System)
+            .map(|m| m.content.clone());
         let messages: Vec<serde_json::Value> = request
             .messages
             .iter()
             .filter(|m| m.role != Role::System)
-            .map(|m| serde_json::json!({
-                "role": if m.role == Role::User { "user" } else { "assistant" },
-                "content": m.content,
-            }))
+            .map(|m| {
+                serde_json::json!({
+                    "role": if m.role == Role::User { "user" } else { "assistant" },
+                    "content": m.content,
+                })
+            })
             .collect();
 
         let mut body = serde_json::json!({
@@ -152,7 +207,7 @@ impl CloudProvider for AnthropicProvider {
 
         let mut stream = self
             .client
-            .post("https://api.anthropic.com/v1/messages")
+            .post(format!("{}/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .json(&body)
@@ -166,16 +221,28 @@ impl CloudProvider for AnthropicProvider {
             let text = std::str::from_utf8(&bytes).unwrap_or("");
             for line in text.lines() {
                 let line = line.trim();
-                let Some(json) = line.strip_prefix("data: ") else { continue };
+                let Some(json) = line.strip_prefix("data: ") else {
+                    continue;
+                };
                 if let Ok(ev) = serde_json::from_str::<AnthropicStreamEvent>(json) {
                     if ev.kind == "content_block_delta" {
                         if let Some(delta) = ev.delta {
                             if delta.kind == "text_delta" {
-                                let _ = tx.send(StreamChunk { delta: delta.text, done: false }).await;
+                                let _ = tx
+                                    .send(StreamChunk {
+                                        delta: delta.text,
+                                        done: false,
+                                    })
+                                    .await;
                             }
                         }
                     } else if ev.kind == "message_stop" {
-                        let _ = tx.send(StreamChunk { delta: String::new(), done: true }).await;
+                        let _ = tx
+                            .send(StreamChunk {
+                                delta: String::new(),
+                                done: true,
+                            })
+                            .await;
                         return Ok(());
                     }
                 }

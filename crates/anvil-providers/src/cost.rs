@@ -12,7 +12,10 @@ pub struct PricingTier {
 
 impl PricingTier {
     const fn new(input: f64, output: f64) -> Self {
-        Self { input_per_million: input, output_per_million: output }
+        Self {
+            input_per_million: input,
+            output_per_million: output,
+        }
     }
 }
 
@@ -82,7 +85,11 @@ mod tests {
 
     #[test]
     fn gpt4o_mini_cost() {
-        let usage = TokenUsage { prompt_tokens: 1000, completion_tokens: 500, total_tokens: 1500 };
+        let usage = TokenUsage {
+            prompt_tokens: 1000,
+            completion_tokens: 500,
+            total_tokens: 1500,
+        };
         let cost = estimate_cost(&BackendKind::OpenAi, "gpt-4o-mini", &usage).unwrap();
         // 1000/1M * 0.15 + 500/1M * 0.60 = 0.00015 + 0.0003 = 0.00045
         assert!((cost - 0.00045).abs() < 1e-9);
@@ -90,7 +97,11 @@ mod tests {
 
     #[test]
     fn local_backend_has_no_cost() {
-        let usage = TokenUsage { prompt_tokens: 10000, completion_tokens: 2000, total_tokens: 12000 };
+        let usage = TokenUsage {
+            prompt_tokens: 10000,
+            completion_tokens: 2000,
+            total_tokens: 12000,
+        };
         assert!(estimate_cost(&BackendKind::Ollama, "deepseek-coder:6.7b", &usage).is_none());
     }
 }

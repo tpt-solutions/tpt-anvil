@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-pub mod symbols;
 pub mod bm25;
+pub mod callgraph;
+pub mod embedding;
+pub mod fusion;
+pub mod retriever;
 pub mod store;
+pub mod symbols;
 pub mod walker;
 pub mod watcher;
-pub mod retriever;
 
+pub use callgraph::{CallEdge, CallGraph};
+pub use embedding::{cosine_similarity, Embedder, HashingEmbedder, OllamaEmbedder};
+pub use fusion::{reciprocal_rank_fusion, FusedResult, RankedItem};
 pub use retriever::Retriever;
 pub use store::IndexStore;

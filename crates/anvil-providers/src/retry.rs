@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use std::future::Future;
 use anvil_core::{AnvilError, Result};
+use std::future::Future;
 use tracing::warn;
 
 #[derive(Debug, Clone)]
@@ -14,7 +14,11 @@ pub struct RetryConfig {
 
 impl Default for RetryConfig {
     fn default() -> Self {
-        Self { max_attempts: 3, base_delay_ms: 500, max_delay_ms: 30_000 }
+        Self {
+            max_attempts: 3,
+            base_delay_ms: 500,
+            max_delay_ms: 30_000,
+        }
     }
 }
 
@@ -41,7 +45,13 @@ where
             Ok(v) => return Ok(v),
             Err(e) if attempt + 1 < config.max_attempts && is_retryable(&e) => {
                 let delay = (config.base_delay_ms * (1u64 << attempt)).min(config.max_delay_ms);
-                warn!("provider request failed (attempt {}/{}): {}; retrying in {}ms", attempt + 1, config.max_attempts, e, delay);
+                warn!(
+                    "provider request failed (attempt {}/{}): {}; retrying in {}ms",
+                    attempt + 1,
+                    config.max_attempts,
+                    e,
+                    delay
+                );
                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 attempt += 1;
             }
@@ -60,13 +70,21 @@ mod tests {
     async fn succeeds_on_first_attempt() {
         let calls = Arc::new(AtomicU32::new(0));
         let c = Arc::clone(&calls);
-        let result = with_retry(&RetryConfig { max_attempts: 3, base_delay_ms: 1, max_delay_ms: 10 }, || {
-            let c = Arc::clone(&c);
-            async move {
-                c.fetch_add(1, Ordering::SeqCst);
-                Ok::<_, AnvilError>(42u32)
-            }
-        }).await;
+        let result = with_retry(
+            &RetryConfig {
+                max_attempts: 3,
+                base_delay_ms: 1,
+                max_delay_ms: 10,
+            },
+            || {
+                let c = Arc::clone(&c);
+                async move {
+                    c.fetch_add(1, Ordering::SeqCst);
+                    Ok::<_, AnvilError>(42u32)
+                }
+            },
+        )
+        .await;
         assert_eq!(result.unwrap(), 42);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
@@ -75,17 +93,27 @@ mod tests {
     async fn retries_on_rate_limit_then_succeeds() {
         let calls = Arc::new(AtomicU32::new(0));
         let c = Arc::clone(&calls);
-        let result = with_retry(&RetryConfig { max_attempts: 3, base_delay_ms: 1, max_delay_ms: 10 }, || {
-            let c = Arc::clone(&c);
-            async move {
-                let n = c.fetch_add(1, Ordering::SeqCst);
-                if n < 2 {
-                    Err(AnvilError::Provider("HTTP 429 Too Many Requests".to_string()))
-                } else {
-                    Ok::<_, AnvilError>(99u32)
+        let result = with_retry(
+            &RetryConfig {
+                max_attempts: 3,
+                base_delay_ms: 1,
+                max_delay_ms: 10,
+            },
+            || {
+                let c = Arc::clone(&c);
+                async move {
+                    let n = c.fetch_add(1, Ordering::SeqCst);
+                    if n < 2 {
+                        Err(AnvilError::Provider(
+                            "HTTP 429 Too Many Requests".to_string(),
+                        ))
+                    } else {
+                        Ok::<_, AnvilError>(99u32)
+                    }
                 }
-            }
-        }).await;
+            },
+        )
+        .await;
         assert_eq!(result.unwrap(), 99);
         assert_eq!(calls.load(Ordering::SeqCst), 3);
     }
@@ -94,13 +122,21 @@ mod tests {
     async fn does_not_retry_non_retryable_error() {
         let calls = Arc::new(AtomicU32::new(0));
         let c = Arc::clone(&calls);
-        let result = with_retry::<_, _, ()>(&RetryConfig { max_attempts: 3, base_delay_ms: 1, max_delay_ms: 10 }, || {
-            let c = Arc::clone(&c);
-            async move {
-                c.fetch_add(1, Ordering::SeqCst);
-                Err(AnvilError::Provider("401 Unauthorized".to_string()))
-            }
-        }).await;
+        let result = with_retry::<_, _, ()>(
+            &RetryConfig {
+                max_attempts: 3,
+                base_delay_ms: 1,
+                max_delay_ms: 10,
+            },
+            || {
+                let c = Arc::clone(&c);
+                async move {
+                    c.fetch_add(1, Ordering::SeqCst);
+                    Err(AnvilError::Provider("401 Unauthorized".to_string()))
+                }
+            },
+        )
+        .await;
         assert!(result.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
@@ -109,14 +145,19 @@ mod tests {
     async fn exhausts_retries_on_persistent_rate_limit() {
         let calls = Arc::new(AtomicU32::new(0));
         let c = Arc::clone(&calls);
-        let cfg = RetryConfig { max_attempts: 3, base_delay_ms: 1, max_delay_ms: 10 };
+        let cfg = RetryConfig {
+            max_attempts: 3,
+            base_delay_ms: 1,
+            max_delay_ms: 10,
+        };
         let result = with_retry::<_, _, ()>(&cfg, || {
             let c = Arc::clone(&c);
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
                 Err(AnvilError::Provider("rate limit exceeded".to_string()))
             }
-        }).await;
+        })
+        .await;
         assert!(result.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 3);
     }

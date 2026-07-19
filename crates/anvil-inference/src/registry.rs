@@ -20,22 +20,18 @@ impl BackendRegistry {
             #[cfg(feature = "llama-cpp")]
             "llama_cpp" => {
                 use crate::llama_cpp::LlamaCppBackend;
-                let path = cfg
-                    .inference
-                    .model_path
-                    .as_deref()
-                    .ok_or_else(|| AnvilError::Config("llama_cpp backend requires inference.model_path".into()))?;
+                let path = cfg.inference.model_path.as_deref().ok_or_else(|| {
+                    AnvilError::Config("llama_cpp backend requires inference.model_path".into())
+                })?;
                 Arc::new(LlamaCppBackend::new(path, cfg.inference.gpu_layers)?)
             }
 
             #[cfg(feature = "candle")]
             "candle" => {
                 use crate::candle::CandleBackend;
-                let path = cfg
-                    .inference
-                    .model_path
-                    .as_deref()
-                    .ok_or_else(|| AnvilError::Config("candle backend requires inference.model_path".into()))?;
+                let path = cfg.inference.model_path.as_deref().ok_or_else(|| {
+                    AnvilError::Config("candle backend requires inference.model_path".into())
+                })?;
                 Arc::new(CandleBackend::new(path)?)
             }
 

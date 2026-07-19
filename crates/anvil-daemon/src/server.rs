@@ -4,7 +4,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use anvil_capabilities::commands::CommandHandler;
 use anvil_config::loader::ConfigLoader;
 use anvil_core::{
@@ -13,6 +12,7 @@ use anvil_core::{
 };
 use anvil_inference::registry::BackendRegistry;
 use anvil_providers::registry::ProviderRegistry;
+use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -23,8 +23,8 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
     let project_path = project_root.map(Path::new);
     let cfg = ConfigLoader::load(project_path)?;
 
-    let backend_registry = BackendRegistry::from_config(&cfg)
-        .context("failed to initialize inference backend")?;
+    let backend_registry =
+        BackendRegistry::from_config(&cfg).context("failed to initialize inference backend")?;
     let provider_registry = ProviderRegistry::from_config(&cfg)?;
 
     let backend = Arc::clone(&backend_registry.active);
@@ -33,7 +33,10 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
     let handler = Arc::new(CommandHandler::new(backend, cloud));
 
     pid::write_pid()?;
-    info!("backend: {} | model: {}", cfg.inference.backend, cfg.inference.model);
+    info!(
+        "backend: {} | model: {}",
+        cfg.inference.backend, cfg.inference.model
+    );
 
     let shutdown = Arc::new(tokio::sync::Notify::new());
     let shutdown_clone = Arc::clone(&shutdown);
@@ -111,7 +114,10 @@ fn pipe_name() -> &'static str {
 }
 
 #[cfg(windows)]
-async fn run_windows(handler: Arc<CommandHandler>, shutdown: Arc<tokio::sync::Notify>) -> Result<()> {
+async fn run_windows(
+    handler: Arc<CommandHandler>,
+    shutdown: Arc<tokio::sync::Notify>,
+) -> Result<()> {
     use tokio::net::windows::named_pipe::ServerOptions;
 
     let name = pipe_name();
@@ -168,7 +174,10 @@ where
 
         let id = req.id;
         let response = match req.method.as_str() {
-            "health" => JsonRpcResponse::ok(id, serde_json::json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") })),
+            "health" => JsonRpcResponse::ok(
+                id,
+                serde_json::json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") }),
+            ),
 
             "status" => {
                 let status = StatusResponse {
@@ -184,7 +193,11 @@ where
                 let params: SlashCommandParams = match serde_json::from_value(req.params) {
                     Ok(p) => p,
                     Err(e) => {
-                        send_line(&mut writer, &JsonRpcResponse::err(id, -32602, format!("invalid params: {e}"))).await;
+                        send_line(
+                            &mut writer,
+                            &JsonRpcResponse::err(id, -32602, format!("invalid params: {e}")),
+                        )
+                        .await;
                         continue;
                     }
                 };
@@ -196,7 +209,9 @@ where
                 let conv_id = params.conversation_id.clone();
 
                 tokio::spawn(async move {
-                    let _ = handler_clone.run(&command, &ctx, conv_id.as_deref(), token_tx).await;
+                    let _ = handler_clone
+                        .run(&command, &ctx, conv_id.as_deref(), token_tx)
+                        .await;
                 });
 
                 let mut full = String::new();

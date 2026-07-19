@@ -26,7 +26,10 @@ pub fn assemble_context_message(ctx: &CodeContext) -> String {
             sel.start_line, sel.end_line, ctx.language, ctx.content
         ));
     } else {
-        parts.push(format!("**Current file content:**\n```{}\n{}\n```", ctx.language, ctx.content));
+        parts.push(format!(
+            "**Current file content:**\n```{}\n{}\n```",
+            ctx.language, ctx.content
+        ));
     }
 
     if !ctx.related_chunks.is_empty() {
@@ -41,7 +44,13 @@ pub fn assemble_context_message(ctx: &CodeContext) -> String {
 
 pub fn build_messages(command: &str, user_input: &str, ctx: &CodeContext) -> Vec<ChatMessage> {
     vec![
-        ChatMessage { role: Role::System, content: build_system_prompt(command) },
-        ChatMessage { role: Role::User, content: format!("{}\n\n{}", assemble_context_message(ctx), user_input) },
+        ChatMessage {
+            role: Role::System,
+            content: build_system_prompt(command),
+        },
+        ChatMessage {
+            role: Role::User,
+            content: format!("{}\n\n{}", assemble_context_message(ctx), user_input),
+        },
     ]
 }

@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::schema::AnvilConfig;
 

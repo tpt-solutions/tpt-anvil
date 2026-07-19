@@ -44,9 +44,11 @@ mod unix_ipc {
                             "error": { "code": -32601, "message": "method not found" }
                         }),
                     };
-                    let _ = writer.write_all(
-                        format!("{}\n", serde_json::to_string(&resp).unwrap()).as_bytes(),
-                    ).await;
+                    let _ = writer
+                        .write_all(
+                            format!("{}\n", serde_json::to_string(&resp).unwrap()).as_bytes(),
+                        )
+                        .await;
                 }
             });
         }
@@ -64,8 +66,12 @@ mod unix_ipc {
         let (reader, mut writer) = stream.into_split();
         let mut lines = BufReader::new(reader).lines();
 
-        let req = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": "health", "params": {} });
-        writer.write_all(format!("{}\n", serde_json::to_string(&req).unwrap()).as_bytes()).await.unwrap();
+        let req =
+            serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": "health", "params": {} });
+        writer
+            .write_all(format!("{}\n", serde_json::to_string(&req).unwrap()).as_bytes())
+            .await
+            .unwrap();
 
         let response_line = tokio::time::timeout(Duration::from_secs(2), lines.next_line())
             .await
@@ -94,7 +100,10 @@ mod unix_ipc {
         let mut lines = BufReader::new(reader).lines();
 
         let req = serde_json::json!({ "jsonrpc": "2.0", "id": 42, "method": "does_not_exist", "params": {} });
-        writer.write_all(format!("{}\n", serde_json::to_string(&req).unwrap()).as_bytes()).await.unwrap();
+        writer
+            .write_all(format!("{}\n", serde_json::to_string(&req).unwrap()).as_bytes())
+            .await
+            .unwrap();
 
         let response_line = tokio::time::timeout(Duration::from_secs(2), lines.next_line())
             .await
@@ -122,10 +131,17 @@ mod unix_ipc {
         let mut lines = BufReader::new(reader).lines();
 
         for i in 1u64..=5 {
-            let req = serde_json::json!({ "jsonrpc": "2.0", "id": i, "method": "health", "params": {} });
-            writer.write_all(format!("{}\n", serde_json::to_string(&req).unwrap()).as_bytes()).await.unwrap();
+            let req =
+                serde_json::json!({ "jsonrpc": "2.0", "id": i, "method": "health", "params": {} });
+            writer
+                .write_all(format!("{}\n", serde_json::to_string(&req).unwrap()).as_bytes())
+                .await
+                .unwrap();
             let line = tokio::time::timeout(Duration::from_secs(2), lines.next_line())
-                .await.expect("timeout").expect("io").expect("line");
+                .await
+                .expect("timeout")
+                .expect("io")
+                .expect("line");
             let resp: serde_json::Value = serde_json::from_str(&line).unwrap();
             assert_eq!(resp["id"], i);
             assert_eq!(resp["result"]["status"], "ok");

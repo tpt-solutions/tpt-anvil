@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use anvil_core::{
-    AnvilError, Result,
     types::{CodeContext, CompletionRequest, DiffPatch, StreamChunk},
+    Result,
 };
 use anvil_inference::backend::InferenceBackend;
 use anvil_providers::provider::CloudProvider;
@@ -15,7 +15,7 @@ use tracing::info;
 use crate::{
     context::build_messages,
     conversation::ConversationStore,
-    diff::{DiffEngine, extract_code_block},
+    diff::{extract_code_block, DiffEngine},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,15 +111,28 @@ impl CommandHandler {
             stream: true,
         };
 
-        // Collect streamed tokens
+        // Collect streamed tokens. Prefer the local backend; if it fails to
+        // produce any output and a cloud provider is configured, fall back to it.
         let (collect_tx, mut collect_rx) = mpsc::channel::<StreamChunk>(256);
         let backend = Arc::clone(&self.local_backend);
+        let cloud = self.cloud_provider.clone();
         let req_clone = request.clone();
         let forward_tx = tx.clone();
         let collect_tx_clone = collect_tx.clone();
 
         tokio::spawn(async move {
-            let _ = backend.stream(&req_clone, collect_tx_clone).await;
+            match backend.stream(&req_clone, collect_tx_clone.clone()).await {
+                Ok(()) => {}
+                Err(e) => {
+                    if let Some(provider) = cloud {
+                        info!(
+                            "local backend failed ({e}); falling back to cloud provider {}",
+                            provider.name()
+                        );
+                        let _ = provider.stream(&req_clone, collect_tx_clone).await;
+                    }
+                }
+            }
         });
 
         let mut full_response = String::new();
@@ -144,11 +157,8 @@ impl CommandHandler {
 
         // Try to extract a diff for commands that modify code
         let patch = match command {
-            Command::Generate | Command::Fix => {
-                extract_code_block(&full_response).map(|new_code| {
-                    DiffEngine::compute_diff(&ctx.content, &new_code, &ctx.file_path)
-                })
-            }
+            Command::Generate | Command::Fix => extract_code_block(&full_response)
+                .map(|new_code| DiffEngine::compute_diff(&ctx.content, &new_code, &ctx.file_path)),
             _ => None,
         };
 
@@ -163,10 +173,22 @@ mod tests {
     #[test]
     fn parse_slash_commands() {
         let cases = [
-            ("/generate a REST endpoint", Command::Generate, "a REST endpoint"),
+            (
+                "/generate a REST endpoint",
+                Command::Generate,
+                "a REST endpoint",
+            ),
             ("/test", Command::Test, ""),
-            ("/explain focus on concurrency", Command::Explain, "focus on concurrency"),
-            ("/fix TypeError: cannot read property", Command::Fix, "TypeError: cannot read property"),
+            (
+                "/explain focus on concurrency",
+                Command::Explain,
+                "focus on concurrency",
+            ),
+            (
+                "/fix TypeError: cannot read property",
+                Command::Fix,
+                "TypeError: cannot read property",
+            ),
             ("/docs include examples", Command::Docs, "include examples"),
             ("what does this do?", Command::Chat, "what does this do?"),
         ];

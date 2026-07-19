@@ -37,15 +37,60 @@ pub enum SymbolKind {
 /// Extract symbols from source code using tree-sitter.
 pub fn extract_symbols(source: &str, language: &str, file_path: &str) -> Vec<Symbol> {
     match language {
-        "rust" => extract_with_parser(source, file_path, tree_sitter_rust::LANGUAGE.into(), parse_rust_symbols),
-        "python" => extract_with_parser(source, file_path, tree_sitter_python::LANGUAGE.into(), parse_generic_symbols),
-        "javascript" | "typescript" => extract_with_parser(source, file_path, tree_sitter_javascript::LANGUAGE.into(), parse_generic_symbols),
-        "go" => extract_with_parser(source, file_path, tree_sitter_go::LANGUAGE.into(), parse_generic_symbols),
-        "java" => extract_with_parser(source, file_path, tree_sitter_java::LANGUAGE.into(), parse_generic_symbols),
-        "c" => extract_with_parser(source, file_path, tree_sitter_c::LANGUAGE.into(), parse_generic_symbols),
-        "ruby" => extract_with_parser(source, file_path, tree_sitter_ruby::LANGUAGE.into(), parse_generic_symbols),
-        "php" => extract_with_parser(source, file_path, tree_sitter_php::language_php().into(), parse_generic_symbols),
-        "c_sharp" | "csharp" => extract_with_parser(source, file_path, tree_sitter_c_sharp::LANGUAGE.into(), parse_generic_symbols),
+        "rust" => extract_with_parser(
+            source,
+            file_path,
+            tree_sitter_rust::LANGUAGE.into(),
+            parse_rust_symbols,
+        ),
+        "python" => extract_with_parser(
+            source,
+            file_path,
+            tree_sitter_python::LANGUAGE.into(),
+            parse_generic_symbols,
+        ),
+        "javascript" | "typescript" => extract_with_parser(
+            source,
+            file_path,
+            tree_sitter_javascript::LANGUAGE.into(),
+            parse_generic_symbols,
+        ),
+        "go" => extract_with_parser(
+            source,
+            file_path,
+            tree_sitter_go::LANGUAGE.into(),
+            parse_generic_symbols,
+        ),
+        "java" => extract_with_parser(
+            source,
+            file_path,
+            tree_sitter_java::LANGUAGE.into(),
+            parse_generic_symbols,
+        ),
+        "c" => extract_with_parser(
+            source,
+            file_path,
+            tree_sitter_c::LANGUAGE.into(),
+            parse_generic_symbols,
+        ),
+        "ruby" => extract_with_parser(
+            source,
+            file_path,
+            tree_sitter_ruby::LANGUAGE.into(),
+            parse_generic_symbols,
+        ),
+        "php" => extract_with_parser(
+            source,
+            file_path,
+            tree_sitter_php::LANGUAGE_PHP.into(),
+            parse_generic_symbols,
+        ),
+        "c_sharp" | "csharp" => extract_with_parser(
+            source,
+            file_path,
+            tree_sitter_c_sharp::LANGUAGE.into(),
+            parse_generic_symbols,
+        ),
         _ => vec![],
     }
 }
@@ -135,7 +180,9 @@ fn collect_generic_nodes(
 ) {
     let node = cursor.node();
     let kind = match node.kind() {
-        "function_definition" | "function_declaration" | "method_definition" => Some(SymbolKind::Function),
+        "function_definition" | "function_declaration" | "method_definition" => {
+            Some(SymbolKind::Function)
+        }
         "class_definition" | "class_declaration" => Some(SymbolKind::Class),
         _ => None,
     };
@@ -195,8 +242,16 @@ mod tests {
         let src = "class Animal:\n    def speak(self):\n        pass\n";
         let syms = extract_symbols(src, "python", "animal.py");
         let names: Vec<_> = syms.iter().map(|s| s.name.as_str()).collect();
-        assert!(names.contains(&"Animal"), "expected class Animal, got {:?}", names);
-        assert!(names.contains(&"speak"), "expected method speak, got {:?}", names);
+        assert!(
+            names.contains(&"Animal"),
+            "expected class Animal, got {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"speak"),
+            "expected method speak, got {:?}",
+            names
+        );
     }
 
     #[test]

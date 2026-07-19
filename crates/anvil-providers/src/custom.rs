@@ -3,8 +3,8 @@
 
 use crate::{openai::OpenAiProvider, provider::CloudProvider};
 use anvil_core::{
-    Result,
     types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, StreamChunk},
+    Result,
 };
 use async_trait::async_trait;
 use tokio::sync::mpsc;
@@ -13,8 +13,17 @@ use tokio::sync::mpsc;
 pub struct CustomProvider(OpenAiProvider);
 
 impl CustomProvider {
-    pub fn new(api_key: impl Into<String>, model: impl Into<String>, base_url: impl Into<String>) -> Self {
-        Self(OpenAiProvider::with_base_url(api_key, model, base_url, BackendKind::OpenAiCompatible))
+    pub fn new(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        base_url: impl Into<String>,
+    ) -> Self {
+        Self(OpenAiProvider::with_base_url(
+            api_key,
+            model,
+            base_url,
+            BackendKind::OpenAiCompatible,
+        ))
     }
 }
 
@@ -32,7 +41,11 @@ impl CloudProvider for CustomProvider {
         self.0.complete(request).await
     }
 
-    async fn stream(&self, request: &CompletionRequest, tx: mpsc::Sender<StreamChunk>) -> Result<()> {
+    async fn stream(
+        &self,
+        request: &CompletionRequest,
+        tx: mpsc::Sender<StreamChunk>,
+    ) -> Result<()> {
         self.0.stream(request, tx).await
     }
 

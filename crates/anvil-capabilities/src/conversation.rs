@@ -14,19 +14,34 @@ pub struct Conversation {
 
 impl Conversation {
     pub fn new(id: impl Into<String>) -> Self {
-        Self { id: id.into(), messages: Vec::new() }
+        Self {
+            id: id.into(),
+            messages: Vec::new(),
+        }
     }
 
     pub fn push_user(&mut self, content: impl Into<String>) {
-        self.messages.push(ChatMessage { role: Role::User, content: content.into() });
+        self.messages.push(ChatMessage {
+            role: Role::User,
+            content: content.into(),
+        });
     }
 
     pub fn push_assistant(&mut self, content: impl Into<String>) {
-        self.messages.push(ChatMessage { role: Role::Assistant, content: content.into() });
+        self.messages.push(ChatMessage {
+            role: Role::Assistant,
+            content: content.into(),
+        });
     }
 
     pub fn with_system(mut self, system: impl Into<String>) -> Self {
-        self.messages.insert(0, ChatMessage { role: Role::System, content: system.into() });
+        self.messages.insert(
+            0,
+            ChatMessage {
+                role: Role::System,
+                content: system.into(),
+            },
+        );
         self
     }
 }
@@ -38,7 +53,9 @@ pub struct ConversationStore {
 
 impl ConversationStore {
     pub fn get_or_create(&mut self, id: &str) -> &mut Conversation {
-        self.conversations.entry(id.to_string()).or_insert_with(|| Conversation::new(id))
+        self.conversations
+            .entry(id.to_string())
+            .or_insert_with(|| Conversation::new(id))
     }
 
     pub fn get(&self, id: &str) -> Option<&Conversation> {

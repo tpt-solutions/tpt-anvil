@@ -1,7 +1,16 @@
 src/
+test/
+dist-test/
 node_modules/
-.eslintrc*
+eslint.config.js
 tsconfig.json
+tsconfig.test.json
+vitest.config.ts
+.vscode-test/
 **/*.map
 **/*.ts
+**/*.vsix
+empty.txt
+vsce.out.txt
+vsce.err.txt
 !dist/**

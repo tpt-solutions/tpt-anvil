@@ -47,3 +47,27 @@ jobs:
       - name: Lint
         run: npx eslint src --ext .ts
         working-directory: extensions/vscode
+      - name: Unit tests (Vitest)
+        run: npm run test
+        working-directory: extensions/vscode
+      - name: Compile E2E tests
+        run: npx tsc -p tsconfig.test.json
+        working-directory: extensions/vscode
+      - name: Build extension
+        run: npm run build
+        working-directory: extensions/vscode
+
+  jetbrains:
+    name: JetBrains Plugin (Kotlin)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run plugin tests
+        working-directory: plugins/jetbrains
+        run: ./gradlew test --no-daemon

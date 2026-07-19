@@ -2,9 +2,9 @@
 // Copyright (c) 2026 TPT Solutions
 
 pub mod commands;
-pub mod diff;
 pub mod context;
 pub mod conversation;
+pub mod diff;
 
 pub use commands::{Command, CommandHandler};
 pub use diff::DiffEngine;

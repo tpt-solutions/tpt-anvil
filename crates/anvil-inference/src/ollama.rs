@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use async_trait::async_trait;
 use anvil_core::{
-    AnvilError, Result,
     types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Role, StreamChunk},
+    AnvilError, Result,
 };
+use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::backend::InferenceBackend;
 
@@ -150,7 +150,11 @@ impl InferenceBackend for OllamaBackend {
         })
     }
 
-    async fn stream(&self, request: &CompletionRequest, tx: mpsc::Sender<StreamChunk>) -> Result<()> {
+    async fn stream(
+        &self,
+        request: &CompletionRequest,
+        tx: mpsc::Sender<StreamChunk>,
+    ) -> Result<()> {
         use futures_util::StreamExt;
 
         let model = request.model.as_deref().unwrap_or("deepseek-coder:6.7b");
@@ -192,7 +196,10 @@ impl InferenceBackend for OllamaBackend {
                 Ok(parsed) => {
                     let done = parsed.done;
                     let _ = tx
-                        .send(StreamChunk { delta: parsed.message.content, done })
+                        .send(StreamChunk {
+                            delta: parsed.message.content,
+                            done,
+                        })
                         .await;
                     if done {
                         break;

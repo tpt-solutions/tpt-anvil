@@ -100,15 +100,26 @@
     "dev": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
-    "package": "vsce package"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node ./dist-test/runTest.js",
+    "pretest:e2e": "tsc -p tsconfig.test.json",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "@types/mocha": "^10.0.7",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.24.0",
+    "glob": "^11.0.0",
+    "mocha": "^10.7.0",
     "typescript": "^5.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "eslint": "^9.0.0"
+    "eslint": "^9.0.0",
+    "vitest": "^2.1.0"
   }
 }

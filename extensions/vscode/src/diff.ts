@@ -2,7 +2,10 @@
 // Copyright (c) 2026 TPT Solutions
 
 import * as vscode from 'vscode';
-import * as fs from 'fs/promises';
+
+import { patchContent } from './diffCore';
+
+export { patchContent, parseHunkOrigStart } from './diffCore';
 
 export async function applyDiff(filePath: string, unifiedDiff: string): Promise<void> {
     try {
@@ -27,25 +30,4 @@ export async function applyDiff(filePath: string, unifiedDiff: string): Promise<
     } catch (err: any) {
         vscode.window.showErrorMessage(`Anvil: Failed to apply diff — ${err.message}`);
     }
-}
-
-function patchContent(original: string, diff: string): string | null {
-    const lines = original.split('\n');
-    const diffLines = diff.split('\n');
-    const result = [...lines];
-    let offset = 0;
-
-    for (const dline of diffLines) {
-        if (dline.startsWith('---') || dline.startsWith('+++') || dline.startsWith('@@')) continue;
-        if (dline.startsWith('+')) {
-            // insertion — for simplified apply: just return the code block if present
-        }
-    }
-
-    // Simplified: extract the new code from the diff's + lines as a replacement
-    const plusLines = diffLines.filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1));
-    if (plusLines.length > 0) {
-        return plusLines.join('\n');
-    }
-    return null;
 }

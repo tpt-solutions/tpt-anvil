@@ -9,7 +9,11 @@ use anvil_inference::registry::BackendRegistry;
 use anvil_providers::keystore;
 
 #[derive(Parser)]
-#[command(name = "anvil", about = "TPT Anvil — local AI development environment", version)]
+#[command(
+    name = "anvil",
+    about = "TPT Anvil — local AI development environment",
+    version
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -49,9 +53,7 @@ pub enum AuthCommands {
         key: String,
     },
     /// Remove an API key from the OS keychain
-    Remove {
-        name: String,
-    },
+    Remove { name: String },
 }
 
 pub fn handle_auth(args: AuthArgs) -> Result<()> {
@@ -76,7 +78,10 @@ pub async fn list_models() -> Result<()> {
         println!("No models found. Make sure Ollama is running or a model path is configured.");
     } else {
         for model in models {
-            println!("  {} — {} (context: {} tokens)", model.id, model.name, model.context_length);
+            println!(
+                "  {} — {} (context: {} tokens)",
+                model.id, model.name, model.context_length
+            );
         }
     }
     Ok(())

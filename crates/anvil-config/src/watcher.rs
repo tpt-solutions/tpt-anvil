@@ -62,6 +62,9 @@ impl ConfigWatcher {
             }
         });
 
-        Ok(Self { config, _watcher: watcher })
+        Ok(Self {
+            config,
+            _watcher: watcher,
+        })
     }
 }

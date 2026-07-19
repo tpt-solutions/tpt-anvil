@@ -34,8 +34,12 @@ impl IndexWatcher {
 
         tokio::spawn(async move {
             while let Some(path) = rx.recv().await {
-                let Some(lang) = walker::detect_language(&path) else { continue };
-                let Ok(content) = std::fs::read_to_string(&path) else { continue };
+                let Some(lang) = walker::detect_language(&path) else {
+                    continue;
+                };
+                let Ok(content) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
 
                 let hash = walker::content_hash(content.as_bytes());
                 let path_str = path.to_string_lossy().to_string();

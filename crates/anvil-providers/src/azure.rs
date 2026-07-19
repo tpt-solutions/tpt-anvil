@@ -3,8 +3,8 @@
 
 use crate::{openai::OpenAiProvider, provider::CloudProvider};
 use anvil_core::{
-    Result,
     types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, StreamChunk},
+    Result,
 };
 use async_trait::async_trait;
 use tokio::sync::mpsc;
@@ -15,8 +15,17 @@ pub struct AzureOpenAiProvider(OpenAiProvider);
 impl AzureOpenAiProvider {
     /// endpoint: e.g. "https://my-resource.openai.azure.com/openai/deployments/my-deployment"
     pub fn new(api_key: impl Into<String>, endpoint: impl Into<String>, api_version: &str) -> Self {
-        let base = format!("{}?api-version={}", endpoint.into().trim_end_matches('/'), api_version);
-        Self(OpenAiProvider::with_base_url(api_key, "", base, BackendKind::AzureOpenAi))
+        let base = format!(
+            "{}?api-version={}",
+            endpoint.into().trim_end_matches('/'),
+            api_version
+        );
+        Self(OpenAiProvider::with_base_url(
+            api_key,
+            "",
+            base,
+            BackendKind::AzureOpenAi,
+        ))
     }
 }
 
@@ -34,7 +43,11 @@ impl CloudProvider for AzureOpenAiProvider {
         self.0.complete(request).await
     }
 
-    async fn stream(&self, request: &CompletionRequest, tx: mpsc::Sender<StreamChunk>) -> Result<()> {
+    async fn stream(
+        &self,
+        request: &CompletionRequest,
+        tx: mpsc::Sender<StreamChunk>,
+    ) -> Result<()> {
         self.0.stream(request, tx).await
     }
 

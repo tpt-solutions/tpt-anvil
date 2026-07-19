@@ -9,7 +9,11 @@ pub fn format_prompt(messages: &[ChatMessage], template: PromptTemplate) -> Stri
         PromptTemplate::ChatMl => format_chatml(messages),
         PromptTemplate::Llama3 => format_llama3(messages),
         PromptTemplate::Alpaca => format_alpaca(messages),
-        PromptTemplate::Raw => messages.iter().map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n"),
+        PromptTemplate::Raw => messages
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
     }
 }
 
@@ -42,7 +46,10 @@ fn format_chatml(messages: &[ChatMessage]) -> String {
             Role::User => "user",
             Role::Assistant => "assistant",
         };
-        out.push_str(&format!("<|im_start|>{role}\n{}\n<|im_end|>\n", msg.content));
+        out.push_str(&format!(
+            "<|im_start|>{role}\n{}\n<|im_end|>\n",
+            msg.content
+        ));
     }
     out.push_str("<|im_start|>assistant\n");
     out
@@ -88,24 +95,42 @@ mod tests {
     use anvil_core::types::{ChatMessage, Role};
 
     fn msg(role: Role, content: &str) -> ChatMessage {
-        ChatMessage { role, content: content.to_string() }
+        ChatMessage {
+            role,
+            content: content.to_string(),
+        }
     }
 
     #[test]
     fn from_model_id_selects_llama3() {
-        assert!(matches!(PromptTemplate::from_model_id("llama-3.1-8b"), PromptTemplate::Llama3));
-        assert!(matches!(PromptTemplate::from_model_id("Meta-Llama3"), PromptTemplate::Llama3));
+        assert!(matches!(
+            PromptTemplate::from_model_id("llama-3.1-8b"),
+            PromptTemplate::Llama3
+        ));
+        assert!(matches!(
+            PromptTemplate::from_model_id("Meta-Llama3"),
+            PromptTemplate::Llama3
+        ));
     }
 
     #[test]
     fn from_model_id_selects_alpaca() {
-        assert!(matches!(PromptTemplate::from_model_id("alpaca-7b"), PromptTemplate::Alpaca));
+        assert!(matches!(
+            PromptTemplate::from_model_id("alpaca-7b"),
+            PromptTemplate::Alpaca
+        ));
     }
 
     #[test]
     fn from_model_id_defaults_to_chatml() {
-        assert!(matches!(PromptTemplate::from_model_id("deepseek-coder:6.7b"), PromptTemplate::ChatMl));
-        assert!(matches!(PromptTemplate::from_model_id("qwen2.5-coder:7b"), PromptTemplate::ChatMl));
+        assert!(matches!(
+            PromptTemplate::from_model_id("deepseek-coder:6.7b"),
+            PromptTemplate::ChatMl
+        ));
+        assert!(matches!(
+            PromptTemplate::from_model_id("qwen2.5-coder:7b"),
+            PromptTemplate::ChatMl
+        ));
     }
 
     #[test]

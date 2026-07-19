@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde_json;
 
 use crate::symbols::Symbol;
@@ -47,9 +47,53 @@ impl IndexStore {
 
             CREATE VIRTUAL TABLE IF NOT EXISTS fts_content
             USING fts5(file_path, content, tokenize='porter ascii');
+
+            CREATE TABLE IF NOT EXISTS embeddings (
+                id INTEGER PRIMARY KEY,
+                file_path TEXT NOT NULL,
+                content TEXT NOT NULL,
+                dims INTEGER NOT NULL,
+                vector BLOB NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_embeddings_path ON embeddings(file_path);
             ",
         )?;
         Ok(())
+    }
+
+    /// Replace all embeddings for a file with a fresh set of (content, vector) pairs.
+    pub fn upsert_embeddings(&self, file_path: &str, items: &[(String, Vec<f32>)]) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM embeddings WHERE file_path = ?1",
+            params![file_path],
+        )?;
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO embeddings (file_path, content, dims, vector) VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (content, vector) in items {
+            stmt.execute(params![
+                file_path,
+                content,
+                vector.len() as i64,
+                vector_to_blob(vector),
+            ])?;
+        }
+        Ok(())
+    }
+
+    /// Load every stored embedding as (file_path, content, vector).
+    pub fn all_embeddings(&self) -> Result<Vec<(String, String, Vec<f32>)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT file_path, content, vector FROM embeddings")?;
+        let rows = stmt.query_map([], |row| {
+            let path: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            let blob: Vec<u8> = row.get(2)?;
+            Ok((path, content, blob_to_vector(&blob)))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     pub fn upsert_file(&self, path: &str, mtime: i64, hash: &str) -> Result<i64> {
@@ -68,7 +112,8 @@ impl IndexStore {
     }
 
     pub fn insert_symbols(&self, file_id: i64, symbols: &[Symbol]) -> Result<()> {
-        self.conn.execute("DELETE FROM symbols WHERE file_id = ?1", params![file_id])?;
+        self.conn
+            .execute("DELETE FROM symbols WHERE file_id = ?1", params![file_id])?;
         let mut stmt = self.conn.prepare(
             "INSERT INTO symbols (file_id, name, kind, start_line, end_line, signature, doc_comment)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -88,7 +133,10 @@ impl IndexStore {
     }
 
     pub fn upsert_fts(&self, file_path: &str, content: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM fts_content WHERE file_path = ?1", params![file_path])?;
+        self.conn.execute(
+            "DELETE FROM fts_content WHERE file_path = ?1",
+            params![file_path],
+        )?;
         self.conn.execute(
             "INSERT INTO fts_content (file_path, content) VALUES (?1, ?2)",
             params![file_path, content],
@@ -121,7 +169,8 @@ impl IndexStore {
         let rows = stmt.query_map(params![pattern, limit as i64], |row| {
             Ok(Symbol {
                 name: row.get(0)?,
-                kind: serde_json::from_str(&row.get::<_, String>(1)?).unwrap_or(crate::symbols::SymbolKind::Unknown),
+                kind: serde_json::from_str(&row.get::<_, String>(1)?)
+                    .unwrap_or(crate::symbols::SymbolKind::Unknown),
                 file_path: row.get(2)?,
                 start_line: row.get(3)?,
                 end_line: row.get(4)?,
@@ -131,4 +180,21 @@ impl IndexStore {
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
+}
+
+/// Serialize an f32 vector to little-endian bytes.
+fn vector_to_blob(v: &[f32]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(v.len() * 4);
+    for x in v {
+        out.extend_from_slice(&x.to_le_bytes());
+    }
+    out
+}
+
+/// Deserialize little-endian bytes back into an f32 vector.
+fn blob_to_vector(bytes: &[u8]) -> Vec<f32> {
+    bytes
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }

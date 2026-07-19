@@ -7,8 +7,8 @@ use anyhow::Result;
 
 fn pid_path() -> PathBuf {
     dirs::runtime_dir()
-        .or_else(|| dirs::data_local_dir())
-        .unwrap_or_else(|| std::env::temp_dir())
+        .or_else(dirs::data_local_dir)
+        .unwrap_or_else(std::env::temp_dir)
         .join("anvil")
         .join("anvil.pid")
 }
@@ -25,21 +25,39 @@ pub fn remove_pid() {
 }
 
 pub fn read_pid() -> Option<u32> {
-    std::fs::read_to_string(pid_path()).ok()?.trim().parse().ok()
+    std::fs::read_to_string(pid_path())
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 pub fn send_stop() -> Result<()> {
     match read_pid() {
         Some(pid) => {
             #[cfg(unix)]
-            unsafe {
-                libc::kill(pid as i32, libc::SIGTERM);
-            }
-            #[cfg(not(unix))]
             {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGTERM);
+                }
+                println!("Sent SIGTERM to anvil daemon (PID {pid}).");
+            }
+            #[cfg(windows)]
+            {
+                let status = std::process::Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/T", "/F"])
+                    .status()?;
+                if status.success() {
+                    println!("Terminated anvil daemon (PID {pid}).");
+                } else {
+                    anyhow::bail!("failed to terminate anvil daemon (PID {pid})");
+                }
+            }
+            #[cfg(not(any(unix, windows)))]
+            {
+                let _ = pid;
                 anyhow::bail!("stop not yet implemented on this platform");
             }
-            println!("Sent SIGTERM to anvil daemon (PID {pid}).");
         }
         None => println!("No running Anvil daemon found."),
     }

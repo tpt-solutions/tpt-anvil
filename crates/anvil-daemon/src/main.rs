@@ -2,12 +2,12 @@
 // Copyright (c) 2026 TPT Solutions
 
 mod cli;
-mod server;
 mod pid;
+mod server;
 
 use anyhow::Result;
 use clap::Parser;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 use cli::{Cli, Commands};
 

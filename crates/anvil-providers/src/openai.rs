@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use async_trait::async_trait;
 use anvil_core::{
+    types::{
+        BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Role, StreamChunk,
+        TokenUsage,
+    },
     AnvilError, Result,
-    types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Role, StreamChunk, TokenUsage},
 };
+use async_trait::async_trait;
 use futures_util::StreamExt;
-use reqwest::{Client, header};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-use crate::{provider::CloudProvider, retry::{with_retry, RetryConfig}};
+use crate::{
+    provider::CloudProvider,
+    retry::{with_retry, RetryConfig},
+};
 
 pub struct OpenAiProvider {
     api_key: String,
@@ -23,7 +29,12 @@ pub struct OpenAiProvider {
 
 impl OpenAiProvider {
     pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
-        Self::with_base_url(api_key, model, "https://api.openai.com/v1", BackendKind::OpenAi)
+        Self::with_base_url(
+            api_key,
+            model,
+            "https://api.openai.com/v1",
+            BackendKind::OpenAi,
+        )
     }
 
     pub fn with_base_url(
@@ -106,8 +117,18 @@ impl CloudProvider for OpenAiProvider {
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         Ok(vec![
-            ModelInfo { id: "gpt-4o".into(), name: "GPT-4o".into(), context_length: 128_000, backend: BackendKind::OpenAi },
-            ModelInfo { id: "gpt-4o-mini".into(), name: "GPT-4o Mini".into(), context_length: 128_000, backend: BackendKind::OpenAi },
+            ModelInfo {
+                id: "gpt-4o".into(),
+                name: "GPT-4o".into(),
+                context_length: 128_000,
+                backend: self.backend_kind.clone(),
+            },
+            ModelInfo {
+                id: "gpt-4o-mini".into(),
+                name: "GPT-4o Mini".into(),
+                context_length: 128_000,
+                backend: self.backend_kind.clone(),
+            },
         ])
     }
 
@@ -119,12 +140,22 @@ impl CloudProvider for OpenAiProvider {
                 .messages
                 .iter()
                 .map(|m| OaiMessage {
-                    role: match m.role { Role::System => "system", Role::User => "user", Role::Assistant => "assistant" },
+                    role: match m.role {
+                        Role::System => "system",
+                        Role::User => "user",
+                        Role::Assistant => "assistant",
+                    },
                     content: &m.content,
                 })
                 .collect();
 
-            let body = OaiRequest { model, messages, max_tokens: request.max_tokens, temperature: request.temperature, stream: false };
+            let body = OaiRequest {
+                model,
+                messages,
+                max_tokens: request.max_tokens,
+                temperature: request.temperature,
+                stream: false,
+            };
             let url = format!("{}/chat/completions", self.base_url);
 
             let resp = self
@@ -139,13 +170,23 @@ impl CloudProvider for OpenAiProvider {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let text = resp.text().await.unwrap_or_default();
-                return Err(AnvilError::Provider(format!("OpenAI API error {status}: {text}")));
+                return Err(AnvilError::Provider(format!(
+                    "OpenAI API error {status}: {text}"
+                )));
             }
 
-            let parsed: OaiResponse = resp.json().await.map_err(|e| AnvilError::Provider(e.to_string()))?;
+            let parsed: OaiResponse = resp
+                .json()
+                .await
+                .map_err(|e| AnvilError::Provider(e.to_string()))?;
 
             Ok(CompletionResponse {
-                content: parsed.choices.into_iter().next().map(|c| c.message.content).unwrap_or_default(),
+                content: parsed
+                    .choices
+                    .into_iter()
+                    .next()
+                    .map(|c| c.message.content)
+                    .unwrap_or_default(),
                 model: parsed.model,
                 usage: parsed.usage.map(|u| TokenUsage {
                     prompt_tokens: u.prompt_tokens,
@@ -153,10 +194,15 @@ impl CloudProvider for OpenAiProvider {
                     total_tokens: u.total_tokens,
                 }),
             })
-        }).await
+        })
+        .await
     }
 
-    async fn stream(&self, request: &CompletionRequest, tx: mpsc::Sender<StreamChunk>) -> Result<()> {
+    async fn stream(
+        &self,
+        request: &CompletionRequest,
+        tx: mpsc::Sender<StreamChunk>,
+    ) -> Result<()> {
         let model = request.model.as_deref().unwrap_or(&self.default_model);
         let body = serde_json::json!({
             "model": model,
@@ -183,7 +229,9 @@ impl CloudProvider for OpenAiProvider {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let text = resp.text().await.unwrap_or_default();
-                return Err(AnvilError::Provider(format!("OpenAI API error {status}: {text}")));
+                return Err(AnvilError::Provider(format!(
+                    "OpenAI API error {status}: {text}"
+                )));
             }
             Ok(resp.bytes_stream())
         })
@@ -196,14 +244,26 @@ impl CloudProvider for OpenAiProvider {
             for line in text.lines() {
                 let line = line.trim();
                 if line == "data: [DONE]" {
-                    let _ = tx.send(StreamChunk { delta: String::new(), done: true }).await;
+                    let _ = tx
+                        .send(StreamChunk {
+                            delta: String::new(),
+                            done: true,
+                        })
+                        .await;
                     return Ok(());
                 }
-                let Some(json) = line.strip_prefix("data: ") else { continue };
+                let Some(json) = line.strip_prefix("data: ") else {
+                    continue;
+                };
                 if let Ok(chunk) = serde_json::from_str::<OaiStreamChunk>(json) {
                     if let Some(choice) = chunk.choices.into_iter().next() {
                         let done = choice.finish_reason.as_deref() == Some("stop");
-                        let _ = tx.send(StreamChunk { delta: choice.delta.content, done }).await;
+                        let _ = tx
+                            .send(StreamChunk {
+                                delta: choice.delta.content,
+                                done,
+                            })
+                            .await;
                     }
                 }
             }

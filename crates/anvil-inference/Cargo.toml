@@ -13,6 +13,12 @@ ollama = ["reqwest"]
 llama-cpp = ["llama-cpp-2"]
 candle = ["candle-core", "candle-transformers", "candle-nn", "hf-hub", "tokenizers"]
 
+# Hardware acceleration (opt-in). These toggle GPU support in the underlying
+# inference crates and are surfaced through the `accel` module.
+cuda = ["candle-core?/cuda", "candle-nn?/cuda", "candle-transformers?/cuda", "llama-cpp-2?/cuda"]
+rocm = ["llama-cpp-2?/rocm"]
+webgpu = ["candle-core?/metal"]
+
 [dependencies]
 anvil-core = { path = "../anvil-core" }
 anvil-config = { path = "../anvil-config" }
