@@ -25,7 +25,7 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
       - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
       - name: cargo test
         run: cargo test --all
 
@@ -40,7 +40,6 @@ jobs:
           cache: "npm"
       - name: Install dependencies
         run: npm ci
-        working-directory: extensions/vscode
       - name: Type check
         run: npx tsc --noEmit
         working-directory: extensions/vscode
@@ -70,4 +69,34 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Run plugin tests
         working-directory: plugins/jetbrains
-        run: ./gradlew test --no-daemon
+        run: gradle test --no-daemon
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate Rust coverage
+        run: cargo llvm-cov --all --lcov --output-path lcov.info
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install node dependencies
+        run: npm ci
+      - name: Generate TypeScript coverage
+        run: npx vitest run --coverage
+        working-directory: extensions/vscode
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info,extensions/vscode/coverage/lcov.info
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

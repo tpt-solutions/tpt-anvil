@@ -22,3 +22,10 @@ This project uses [Semantic Versioning](https://semver.org/).
 - JetBrains plugin: tool window, chat panel, settings page, editor context actions
 - GitHub Actions release workflow (Linux musl, macOS arm64/x86_64, Windows)
 - Dual MIT/Apache-2.0 license — TPT Solutions
+- `anvil-indexer`: call graph construction (caller/callee), local embeddings (offline feature-hashing + Ollama), hybrid retrieval with BM25 + vector RRF fusion
+- `anvil-inference`: GPU acceleration feature flags (`cuda`, `rocm`, `webgpu`) with device selection
+- `anvil-providers`: integration tests against a mock HTTP server (wiremock); cloud fallback in the capability layer
+- `anvil-capabilities`: full unified-diff application (hunk-aware patcher)
+- VS Code extension: Vitest unit tests, `@vscode/test-electron` E2E suite, ESLint flat config, VSIX packaging + Marketplace publish workflow
+- JetBrains plugin: JUnit 5 unit tests + Kotlin CI job
+- CI: Vitest + Kotlin test jobs, code coverage (cargo-llvm-cov + Vitest → Codecov), Dependabot config

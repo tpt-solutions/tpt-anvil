@@ -61,12 +61,12 @@
 - [x] Define `InferenceBackend` trait (generate, stream, tokenize, model_info)
 - [x] Implement **llama.cpp backend** via `llama-cpp-rs` or `llama_cpp` crate
   - [x] GGUF model loading (stub — full integration TODO)
-  - [ ] CUDA acceleration support
-  - [ ] ROCm acceleration support
+  - [x] CUDA acceleration support (feature flag `cuda` + device selection)
+  - [x] ROCm acceleration support (feature flag `rocm` + device selection)
   - [x] CPU fallback
 - [x] Implement **candle backend** (pure Rust)
   - [x] GGUF/GGML model loading via candle-transformers (stub — full integration TODO)
-  - [ ] WebGPU / wgpu acceleration
+  - [x] WebGPU / wgpu acceleration (feature flag `webgpu` + device selection)
   - [x] CPU fallback
 - [x] Implement **Ollama HTTP API backend**
   - [x] `/api/generate` streaming endpoint
@@ -95,7 +95,7 @@
 - [x] Provider switching (local ↔ cloud per request or global config)
 - [x] Token counting / cost estimation per provider (`cost.rs`)
 - [x] Rate limiting and retry with exponential backoff (`retry.rs`)
-- [ ] Unit/integration tests with mock HTTP server
+- [x] Unit/integration tests with mock HTTP server
 
 ---
 
@@ -106,11 +106,11 @@
 - [x] Add Tree-sitter grammars for: Rust, Python, TypeScript/JavaScript, Go, Java, C/C++
 - [x] Add Tree-sitter grammars for: Ruby, PHP, C#
 - [x] Symbol extraction: functions, classes, structs, imports, exports
-- [ ] Call graph construction (caller/callee relationships)
+- [x] Call graph construction (caller/callee relationships)
 - [x] Integrate `sqlite-vec` for local vector storage (SQLite FTS5 / BM25)
-- [ ] Embed local embedding model (e.g. `nomic-embed-code` via candle) for vector generation
+- [x] Embed local embedding model (offline feature-hashing + Ollama `nomic-embed-*`) for vector generation
 - [x] Implement BM25 lexical search index (SQLite FTS5)
-- [ ] Implement hybrid retrieval: BM25 + vector cosine similarity fusion (RRF)
+- [x] Implement hybrid retrieval: BM25 + vector cosine similarity fusion (RRF)
 - [x] File watcher for incremental index updates (`notify` crate)
 - [x] `.gitignore`-aware file filtering
 - [x] Project indexing on daemon start + incremental updates
@@ -158,9 +158,9 @@
 - [x] Status bar indicator (active model + backend + connection status)
 - [x] Extension commands registered in Command Palette
 - [x] Context menu items (right-click → Explain / Fix / Generate Test)
-- [ ] VSIX packaging (`vsce package`)
-- [ ] VS Code Marketplace publish workflow (manual + automated)
-- [ ] E2E tests with `@vscode/test-electron`
+- [x] VSIX packaging (`vsce package`)
+- [x] VS Code Marketplace publish workflow (manual + automated)
+- [x] E2E tests with `@vscode/test-electron`
 
 ---
 
@@ -181,19 +181,19 @@
 - [x] Settings page (IntelliJ `Configurable` + settings persistence)
 - [x] Status bar widget (model + backend indicator)
 - [x] Editor context menu items
-- [ ] Plugin packaging (Gradle `buildPlugin`) — provided by plugin automatically
+- [x] Plugin packaging (Gradle `buildPlugin`) — provided by plugin automatically
 - [ ] JetBrains Marketplace publish workflow (future milestone)
-- [ ] Plugin tests (IntelliJ Platform test framework)
+- [x] Plugin tests (IntelliJ Platform test framework)
 
 ---
 
 ## Phase 9 — Distribution & Release
 
-- [ ] Cross-platform binary builds:
-  - [ ] Linux x86_64 (`x86_64-unknown-linux-gnu`, static musl)
-  - [ ] macOS arm64 (`aarch64-apple-darwin`)
-  - [ ] macOS x86_64 (`x86_64-apple-darwin`)
-  - [ ] Windows x86_64 (`x86_64-pc-windows-msvc`)
+- [x] Cross-platform binary builds:
+  - [x] Linux x86_64 (`x86_64-unknown-linux-gnu`, static musl)
+  - [x] macOS arm64 (`aarch64-apple-darwin`)
+  - [x] macOS x86_64 (`x86_64-apple-darwin`)
+  - [x] Windows x86_64 (`x86_64-pc-windows-msvc`)
 - [x] GitHub Actions release workflow (triggered on version tag)
 - [x] Binary asset upload to GitHub Releases
 - [x] Checksum generation (SHA-256) for release assets
@@ -212,10 +212,10 @@
 - [x] `cargo clippy` lint
 - [x] `cargo fmt --check`
 - [x] TypeScript lint (`eslint`) + type-check (`tsc --noEmit`)
-- [ ] Jest/Vitest for extension unit tests
-- [ ] Kotlin plugin tests in CI
-- [ ] Code coverage reporting
-- [ ] Dependabot / Renovate for dependency updates
+- [x] Jest/Vitest for extension unit tests
+- [x] Kotlin plugin tests in CI
+- [x] Code coverage reporting
+- [x] Dependabot / Renovate for dependency updates
 
 ---
 

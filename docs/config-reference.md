@@ -16,7 +16,27 @@ Config files are TOML. Two locations are checked (project overrides user):
 | `context_length` | int | `8192` | Context window size in tokens |
 | `max_tokens` | int | `2048` | Max tokens to generate |
 | `temperature` | float | `0.2` | Sampling temperature (0.0–1.0) |
-| `gpu_layers` | int | `-1` | GPU layers to offload (-1 = all) |
+| `gpu_layers` | int | `-1` | GPU layers to offload (`0` = force CPU, `-1`/other = auto GPU) |
+
+### Hardware acceleration
+
+Local backends (`llama_cpp`, `candle`) can offload work to a GPU. Acceleration
+is opt-in at build time via Cargo feature flags on the `anvil-inference` crate:
+
+| Feature | Backend(s) | Hardware |
+|---------|------------|----------|
+| `cuda` | llama.cpp, candle | NVIDIA GPUs (CUDA) |
+| `rocm` | llama.cpp | AMD GPUs (ROCm/HIP) |
+| `webgpu` | candle | Cross-vendor GPU (WebGPU/Metal) |
+
+Example:
+
+```sh
+cargo build --release -p anvil-daemon --features "anvil-inference/candle,anvil-inference/cuda"
+```
+
+When no acceleration feature is compiled in, or `gpu_layers = 0`, backends run
+on CPU. The selected device is reported in the daemon logs at startup.
 
 ## `[providers]`
 
@@ -54,6 +74,15 @@ Config files are TOML. Two locations are checked (project overrides user):
 | `exclude_patterns` | array | `["*.lock", "node_modules/**", ...]` | Glob patterns to skip |
 | `top_k` | int | `10` | Number of context chunks to retrieve |
 | `embedding_model` | string | `"nomic-embed-code"` | Embedding model for vector search |
+
+### Retrieval
+
+Anvil uses **hybrid retrieval**: BM25 lexical ranking (SQLite FTS5) and vector
+cosine similarity are combined with Reciprocal Rank Fusion (RRF), then blended
+with exact symbol matches. Embeddings are generated locally. By default a
+dependency-free feature-hashing embedder is used so vector search works fully
+offline; set `embedding_model` to a neural model served by Ollama (e.g.
+`nomic-embed-text`) for higher-quality semantic search.
 
 ## `[ui]`
 
