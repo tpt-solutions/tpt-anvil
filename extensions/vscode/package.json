@@ -114,7 +114,7 @@
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.24.0",
-    "glob": "^11.0.0",
+    "glob": "^13.0.6",
     "mocha": "^10.7.0",
     "typescript": "^5.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
