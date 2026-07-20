@@ -100,8 +100,8 @@ async fn run_unix(handler: Arc<CommandHandler>, shutdown: Arc<tokio::sync::Notif
 #[cfg(unix)]
 pub fn unix_socket_path() -> std::path::PathBuf {
     dirs::runtime_dir()
-        .or_else(|| dirs::data_local_dir())
-        .unwrap_or_else(|| std::env::temp_dir())
+        .or_else(dirs::data_local_dir)
+        .unwrap_or_else(std::env::temp_dir)
         .join("anvil")
         .join("anvil.sock")
 }
