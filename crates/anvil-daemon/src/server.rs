@@ -11,7 +11,7 @@ use anvil_core::{
     types::StreamChunk,
 };
 use anvil_inference::registry::BackendRegistry;
-use anvil_providers::registry::ProviderRegistry;
+use tpt_anvil_providers::registry::ProviderRegistry;
 use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;

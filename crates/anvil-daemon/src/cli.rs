@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 
 use anvil_config::ConfigLoader;
 use anvil_inference::registry::BackendRegistry;
-use anvil_providers::keystore;
+use tpt_anvil_providers::keystore;
 
 #[derive(Parser)]
 #[command(

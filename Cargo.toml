@@ -4,8 +4,8 @@ members = [
     "crates/anvil-core",
     "crates/anvil-config",
     "crates/anvil-inference",
-    "crates/anvil-providers",
-    "crates/anvil-indexer",
+    "crates/tpt-anvil-providers",
+    "crates/tpt-anvil-indexer",
     "crates/anvil-capabilities",
     "crates/anvil-daemon",
 ]

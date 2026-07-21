@@ -27,7 +27,7 @@ TPT Anvil follows a client–server architecture where a long-running Rust daemo
 │  └───────┬──────────────┬───────────┘   │
 │          │              │               │
 │  ┌───────▼──────┐ ┌─────▼───────────┐  │
-│  │anvil-inference│ │ anvil-indexer   │  │
+│  │anvil-inference│ │ tpt-anvil-indexer   │  │
 │  │  InferenceBE  │ │ Tree-sitter AST │  │
 │  │  ┌──────────┐ │ │ BM25 (FTS5)    │  │
 │  │  │  Ollama  │ │ │ sqlite-vec     │  │
@@ -36,7 +36,7 @@ TPT Anvil follows a client–server architecture where a long-running Rust daemo
 │  │  └──────────┘ │                     │
 │  └───────────────┘                     │
 │  ┌──────────────────────────────────┐  │
-│  │       anvil-providers            │  │
+│  │       tpt-anvil-providers            │  │
 │  │  OpenAI  Anthropic  OpenRouter   │  │
 │  │  Azure   Custom endpoint         │  │
 │  └──────────────────────────────────┘  │
@@ -54,8 +54,8 @@ TPT Anvil follows a client–server architecture where a long-running Rust daemo
 | `anvil-core` | Shared types, error types, IPC protocol definitions |
 | `anvil-config` | Config schema, file loading, hot-reload watcher |
 | `anvil-inference` | `InferenceBackend` trait; Ollama, llama.cpp, candle |
-| `anvil-providers` | Cloud provider trait; OpenAI, Anthropic, OpenRouter, Azure, custom |
-| `anvil-indexer` | Tree-sitter parsing, SQLite FTS5, symbol extraction, file watcher |
+| `tpt-anvil-providers` | Cloud provider trait; OpenAI, Anthropic, OpenRouter, Azure, custom |
+| `tpt-anvil-indexer` | Tree-sitter parsing, SQLite FTS5, symbol extraction, file watcher |
 | `anvil-capabilities` | Slash commands, diff engine, context assembly, conversation store |
 | `anvil-daemon` | Main binary: IPC server, CLI, daemon lifecycle |
 

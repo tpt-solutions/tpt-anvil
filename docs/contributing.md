@@ -17,7 +17,7 @@ Thank you for your interest in contributing. This document covers everything you
 cargo build --all
 ```
 
-This compiles every crate in the workspace, including `anvil-core`, `anvil-config`, `anvil-indexer`, `anvil-daemon`, and all others.
+This compiles every crate in the workspace, including `anvil-core`, `anvil-config`, `tpt-anvil-indexer`, `anvil-daemon`, and all others.
 
 ## Running the Daemon
 
