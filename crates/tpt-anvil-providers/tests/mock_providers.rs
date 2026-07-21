@@ -7,11 +7,11 @@
 //! error handling without contacting any real provider API.
 
 use anvil_core::types::{BackendKind, ChatMessage, CompletionRequest, Role, StreamChunk};
+use tokio::sync::mpsc;
 use tpt_anvil_providers::provider::CloudProvider;
 use tpt_anvil_providers::{
     anthropic::AnthropicProvider, custom::CustomProvider, openai::OpenAiProvider,
 };
-use tokio::sync::mpsc;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

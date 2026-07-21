@@ -8,8 +8,8 @@ use anvil_core::{
     Result,
 };
 use anvil_inference::backend::InferenceBackend;
-use tpt_anvil_providers::provider::CloudProvider;
 use tokio::sync::{mpsc, Mutex};
+use tpt_anvil_providers::provider::CloudProvider;
 use tracing::info;
 
 use crate::{

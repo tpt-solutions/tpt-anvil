@@ -11,10 +11,10 @@ use anvil_core::{
     types::StreamChunk,
 };
 use anvil_inference::registry::BackendRegistry;
-use tpt_anvil_providers::registry::ProviderRegistry;
 use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
+use tpt_anvil_providers::registry::ProviderRegistry;
 use tracing::{error, info};
 
 use crate::pid;
