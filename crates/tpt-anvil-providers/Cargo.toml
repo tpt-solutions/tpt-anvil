@@ -22,7 +22,7 @@ async-trait = { workspace = true }
 reqwest = { workspace = true }
 tracing = { workspace = true }
 regex = { workspace = true }
-keyring = "3"
+keyring = "4"
 futures-util = "0.3"
 
 [dev-dependencies]
