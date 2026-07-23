@@ -8,6 +8,8 @@ use anvil_config::loader::ConfigLoader;
 use anvil_inference::registry::BackendRegistry;
 use tpt_anvil_providers::keystore;
 
+use crate::server::to_provider_config;
+
 #[derive(Parser)]
 #[command(
     name = "anvil",
@@ -493,7 +495,7 @@ async fn run_benchmark(
         })?;
 
     // Load config and build the provider for the given name
-    let cfg = anvil_config::loader::ConfigLoader::load()
+    let cfg = anvil_config::loader::ConfigLoader::load(project_root.map(std::path::Path::new))
         .map_err(|e| anyhow::anyhow!("failed to load config: {e}"))?;
     let provider_cfg = to_provider_config(&cfg);
     let registry = ProviderRegistry::from_config(&provider_cfg)
@@ -529,6 +531,7 @@ async fn run_benchmark(
         run_tests: cfg.verify.run_tests,
         run_linter: cfg.verify.run_linter,
         timeout_seconds: cfg.verify.timeout_seconds,
+        max_retries: cfg.verify.max_retries,
     };
 
     println!("Running {} benchmark tasks against {target}...\n", tasks.len());
@@ -623,7 +626,7 @@ async fn run_benchmark(
         .save(&store_path)
         .map_err(|e| anyhow::anyhow!("failed to save benchmark store: {e}"))?;
 
-    println!("\nBenchmark complete: {score:.0%} ({target}) at {now}");
+    println!("\nBenchmark complete: {:.0}% ({target}) at {now}", score * 100.0);
     if total_cost > 0.0 {
         println!("Estimated cost: ${total_cost:.4}");
     }
@@ -632,7 +635,7 @@ async fn run_benchmark(
     Ok(())
 }
 
-async fn show_benchmark_report(compare: &[String]) -> Result<()> {
+async fn show_benchmark_report(targets: &[String]) -> Result<()> {
     use anvil_capabilities::benchmark::comparison::compare;
     use anvil_capabilities::benchmark::store::BenchmarkStore;
 
@@ -645,7 +648,7 @@ async fn show_benchmark_report(compare: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    match compare.len() {
+    match targets.len() {
         0 => {
             // Show all stored scorecards
             println!("Stored Benchmark Scorecards\n");
@@ -657,7 +660,7 @@ async fn show_benchmark_report(compare: &[String]) -> Result<()> {
             for entry in store.entries() {
                 let adaptive = entry
                     .adaptive_score
-                    .map(|s| format!("{:.0%}", s))
+                    .map(|s| format!("{:.0}%", s * 100.0))
                     .unwrap_or_else(|| "-".into());
                 let cost = if entry.total_cost_usd > 0.0 {
                     format!("${:.4}", entry.total_cost_usd)
@@ -665,26 +668,26 @@ async fn show_benchmark_report(compare: &[String]) -> Result<()> {
                     "-".into()
                 };
                 println!(
-                    "{:<15} {:<25} {:>8.0%} {:>8} {:>10}",
-                    entry.provider, entry.model_id, entry.core_score, adaptive, cost
+                    "{:<15} {:<25} {:>8.0}% {:>8} {:>10}",
+                    entry.provider, entry.model_id, entry.core_score * 100.0, adaptive, cost
                 );
             }
             println!("\nRun `anvil benchmark report <provider1/model1> <provider2/model2>` to compare.");
         }
         2 => {
-            let (left_provider, left_model) = parse_target(&compare[0])?;
-            let (right_provider, right_model) = parse_target(&compare[1])?;
+            let (left_provider, left_model) = parse_target(&targets[0])?;
+            let (right_provider, right_model) = parse_target(&targets[1])?;
 
             let left = store.find(&left_provider, &left_model).ok_or_else(|| {
                 anyhow::anyhow!(
                     "no scorecard found for {}",
-                    &compare[0]
+                    &targets[0]
                 )
             })?;
             let right = store.find(&right_provider, &right_model).ok_or_else(|| {
                 anyhow::anyhow!(
                     "no scorecard found for {}",
-                    &compare[1]
+                    &targets[1]
                 )
             })?;
 
@@ -697,12 +700,12 @@ async fn show_benchmark_report(compare: &[String]) -> Result<()> {
             );
             println!("  Shared tasks: {}\n", cmp.shared_task_ids.len());
             println!(
-                "  {:<25} {:.0%}",
-                cmp.left_label, cmp.left_shared_score
+                "  {:<25} {:.0}%",
+                cmp.left_label, cmp.left_shared_score * 100.0
             );
             println!(
-                "  {:<25} {:.0%}",
-                cmp.right_label, cmp.right_shared_score
+                "  {:<25} {:.0}%",
+                cmp.right_label, cmp.right_shared_score * 100.0
             );
 
             if !cmp.left_only_task_ids.is_empty() {
