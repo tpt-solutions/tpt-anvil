@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
+use crate::types::{
+    BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Result, StreamChunk,
+};
 use crate::{openai::OpenAiProvider, provider::CloudProvider};
-use crate::types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Result, StreamChunk};
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
@@ -35,6 +37,10 @@ impl CustomProvider {
 impl CloudProvider for CustomProvider {
     fn name(&self) -> &str {
         "custom"
+    }
+
+    fn default_model(&self) -> &str {
+        self.0.default_model()
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {

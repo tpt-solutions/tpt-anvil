@@ -23,205 +23,64 @@ pub struct AnvilConfig {
     pub verify: VerifyConfigSchema,
 }
 
-impl AnvilConfig {
-    /// Merge another config on top of this one. Non-default values in `overlay`
-    /// win over `self` for scalar fields; nested structs are merged recursively.
-    pub fn merge_with(self, overlay: AnvilConfig) -> Self {
-        Self {
-            inference: merge(self.inference, overlay.inference),
-            providers: merge(self.providers, overlay.providers),
-            indexing: merge(self.indexing, overlay.indexing),
-            ui: merge(self.ui, overlay.ui),
-            vault: merge(self.vault, overlay.vault),
-            smart_context: merge(self.smart_context, overlay.smart_context),
-            router: merge(self.router, overlay.router),
-            verify: merge(self.verify, overlay.verify),
-        }
-    }
-}
-
-impl InferenceConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
-        Self {
-            backend: merge_scalar(base.backend, overlay.backend, "ollama".into()),
-            model: merge_scalar(base.model, overlay.model, "deepseek-coder:6.7b".into()),
-            ollama_url: merge_scalar(base.ollama_url, overlay.ollama_url, "http://localhost:11434".into()),
-            model_path: overlay.model_path.or(base.model_path),
-            context_length: merge_scalar(base.context_length, overlay.context_length, 8192),
-            max_tokens: merge_scalar(base.max_tokens, overlay.max_tokens, 2048),
-            temperature: merge_scalar(base.temperature, overlay.temperature, 0.2),
-            gpu_layers: merge_scalar(base.gpu_layers, overlay.gpu_layers, -1),
-        }
-    }
-}
-
-impl ProvidersConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
-        Self {
-            active: overlay.active.or(base.active),
-            openai: merge(base.openai, overlay.openai),
-            azure: merge(base.azure, overlay.azure),
-            anthropic: merge(base.anthropic, overlay.anthropic),
-            openrouter: merge(base.openrouter, overlay.openrouter),
-            custom: merge(base.custom, overlay.custom),
-        }
-    }
-}
-
-impl OpenAiConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
-        Self {
-            model: merge_scalar(base.model, overlay.model, "".into()),
-            api_key_entry: overlay.api_key_entry.or(base.api_key_entry),
-        }
-    }
-}
-
-impl AzureConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
-        Self {
-            endpoint: overlay.endpoint.or(base.endpoint),
-            deployment: overlay.deployment.or(base.deployment),
-            api_version: merge_scalar(base.api_version, overlay.api_version, "2024-02-01".into()),
-            api_key_entry: overlay.api_key_entry.or(base.api_key_entry),
-        }
-    }
-}
-
-impl AnthropicConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
-        Self {
-            model: merge_scalar(base.model, overlay.model, "claude-sonnet-5".into()),
-            api_key_entry: overlay.api_key_entry.or(base.api_key_entry),
-        }
-    }
-}
-
-impl OpenRouterConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
-        Self {
-            model: merge_scalar(base.model, overlay.model, "deepseek/deepseek-coder".into()),
-            api_key_entry: overlay.api_key_entry.or(base.api_key_entry),
-        }
-    }
-}
-
-impl CustomProviderConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
-        Self {
-            base_url: overlay.base_url.or(base.base_url),
-            model: overlay.model.or(base.model),
-            api_key_entry: overlay.api_key_entry.or(base.api_key_entry),
-        }
-    }
-}
-
-impl IndexingConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
-        Self {
-            max_file_size: merge_scalar(base.max_file_size, overlay.max_file_size, 1_048_576),
-            exclude_patterns: if overlay.exclude_patterns.is_empty() {
-                base.exclude_patterns
-            } else {
-                overlay.exclude_patterns
-            },
-            top_k: merge_scalar(base.top_k, overlay.top_k, 10),
-            embedding_model: merge_scalar(base.embedding_model, overlay.embedding_model, "nomic-embed-code".into()),
-        }
-    }
-}
-
-impl UiConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
-        Self {
-            theme: merge_scalar(base.theme, overlay.theme, "system".into()),
-            font_size: merge_scalar(base.font_size, overlay.font_size, 14),
-        }
-    }
-}
-
-/// For scalar types: if overlay equals the default, keep base; otherwise overlay wins.
-fn merge_scalar<T: PartialEq>(base: T, overlay: T, default: T) -> T {
-    if overlay == default { base } else { overlay }
-}
-
-/// Generic merge that delegates to each type's `Self::merge()` method.
-trait HasMerge: Sized {
-    fn merge_fields(base: Self, overlay: Self) -> Self;
-}
-
-impl HasMerge for InferenceConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for ProvidersConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for IndexingConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for UiConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for VaultConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for SmartContextConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for RouterConfigSchema {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for VerifyConfigSchema {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for OpenAiConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for AzureConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for AnthropicConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for OpenRouterConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-impl HasMerge for CustomProviderConfig {
-    fn merge_fields(base: Self, overlay: Self) -> Self { Self::merge(base, overlay) }
-}
-
-fn merge<T: HasMerge>(base: T, overlay: T) -> T {
-    T::merge_fields(base, overlay)
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceConfig {
     /// Which backend to use: "ollama", "llama_cpp", "candle"
+    #[serde(default = "default_inference_backend")]
     pub backend: String,
     /// Model identifier (e.g. "deepseek-coder:6.7b" for Ollama, or path to GGUF)
+    #[serde(default = "default_inference_model")]
     pub model: String,
     /// Ollama server URL (only used when backend = "ollama")
+    #[serde(default = "default_ollama_url")]
     pub ollama_url: String,
     /// Path to GGUF model file (only used when backend = "llama_cpp" or "candle")
+    #[serde(default)]
     pub model_path: Option<String>,
+    #[serde(default = "default_context_length")]
     pub context_length: u32,
+    #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
+    #[serde(default = "default_temperature")]
     pub temperature: f32,
     /// GPU layers to offload (-1 = all)
+    #[serde(default = "default_gpu_layers")]
     pub gpu_layers: i32,
+}
+
+fn default_inference_backend() -> String {
+    "ollama".into()
+}
+fn default_inference_model() -> String {
+    "deepseek-coder:6.7b".into()
+}
+fn default_ollama_url() -> String {
+    "http://localhost:11434".into()
+}
+fn default_context_length() -> u32 {
+    8192
+}
+fn default_max_tokens() -> u32 {
+    2048
+}
+fn default_temperature() -> f32 {
+    0.2
+}
+fn default_gpu_layers() -> i32 {
+    -1
 }
 
 impl Default for InferenceConfig {
     fn default() -> Self {
         Self {
-            backend: "ollama".into(),
-            model: "deepseek-coder:6.7b".into(),
-            ollama_url: "http://localhost:11434".into(),
+            backend: default_inference_backend(),
+            model: default_inference_model(),
+            ollama_url: default_ollama_url(),
             model_path: None,
-            context_length: 8192,
-            max_tokens: 2048,
-            temperature: 0.2,
-            gpu_layers: -1,
+            context_length: default_context_length(),
+            max_tokens: default_max_tokens(),
+            temperature: default_temperature(),
+            gpu_layers: default_gpu_layers(),
         }
     }
 }
@@ -229,6 +88,7 @@ impl Default for InferenceConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProvidersConfig {
     /// Which provider to use for cloud fallback: "openai", "anthropic", "openrouter", "azure", "custom"
+    #[serde(default)]
     pub active: Option<String>,
     #[serde(default)]
     pub openai: OpenAiConfig,
@@ -242,19 +102,33 @@ pub struct ProvidersConfig {
     pub custom: CustomProviderConfig,
 }
 
+// Cloud provider model fields default to an empty string rather than a
+// specific model id: model names change too often for a code-level default
+// to stay current, so `ProviderRegistry::from_config` requires the user to
+// set one explicitly instead of silently picking a (potentially stale) one.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OpenAiConfig {
+    #[serde(default)]
     pub model: String,
     /// API key stored in OS keychain; this field is just the keychain entry name
+    #[serde(default)]
     pub api_key_entry: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AzureConfig {
+    #[serde(default)]
     pub endpoint: Option<String>,
+    #[serde(default)]
     pub deployment: Option<String>,
+    #[serde(default = "default_azure_api_version")]
     pub api_version: String,
+    #[serde(default)]
     pub api_key_entry: Option<String>,
+}
+
+fn default_azure_api_version() -> String {
+    "2024-02-01".into()
 }
 
 impl Default for AzureConfig {
@@ -262,89 +136,104 @@ impl Default for AzureConfig {
         Self {
             endpoint: None,
             deployment: None,
-            api_version: "2024-02-01".into(),
-            api_key_entry: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnthropicConfig {
-    pub model: String,
-    pub api_key_entry: Option<String>,
-}
-
-impl Default for AnthropicConfig {
-    fn default() -> Self {
-        Self {
-            model: "claude-sonnet-5".into(),
-            api_key_entry: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenRouterConfig {
-    pub model: String,
-    pub api_key_entry: Option<String>,
-}
-
-impl Default for OpenRouterConfig {
-    fn default() -> Self {
-        Self {
-            model: "deepseek/deepseek-coder".into(),
+            api_version: default_azure_api_version(),
             api_key_entry: None,
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AnthropicConfig {
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub api_key_entry: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OpenRouterConfig {
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub api_key_entry: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CustomProviderConfig {
+    #[serde(default)]
     pub base_url: Option<String>,
+    #[serde(default)]
     pub model: Option<String>,
+    #[serde(default)]
     pub api_key_entry: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexingConfig {
     /// Max file size to index in bytes
+    #[serde(default = "default_max_file_size")]
     pub max_file_size: u64,
     /// File glob patterns to exclude
+    #[serde(default = "default_exclude_patterns")]
     pub exclude_patterns: Vec<String>,
     /// Number of context chunks to retrieve per query
+    #[serde(default = "default_top_k")]
     pub top_k: usize,
+    #[serde(default = "default_embedding_model")]
     pub embedding_model: String,
+}
+
+fn default_max_file_size() -> u64 {
+    1_048_576
+} // 1 MB
+fn default_exclude_patterns() -> Vec<String> {
+    vec![
+        "*.lock".into(),
+        "node_modules/**".into(),
+        "target/**".into(),
+        ".git/**".into(),
+        "*.min.js".into(),
+        "dist/**".into(),
+    ]
+}
+fn default_top_k() -> usize {
+    10
+}
+fn default_embedding_model() -> String {
+    "nomic-embed-code".into()
 }
 
 impl Default for IndexingConfig {
     fn default() -> Self {
         Self {
-            max_file_size: 1_048_576, // 1 MB
-            exclude_patterns: vec![
-                "*.lock".into(),
-                "node_modules/**".into(),
-                "target/**".into(),
-                ".git/**".into(),
-                "*.min.js".into(),
-                "dist/**".into(),
-            ],
-            top_k: 10,
-            embedding_model: "nomic-embed-code".into(),
+            max_file_size: default_max_file_size(),
+            exclude_patterns: default_exclude_patterns(),
+            top_k: default_top_k(),
+            embedding_model: default_embedding_model(),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiConfig {
+    #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_font_size")]
     pub font_size: u8,
+}
+
+fn default_theme() -> String {
+    "system".into()
+}
+fn default_font_size() -> u8 {
+    14
 }
 
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            theme: "system".into(),
-            font_size: 14,
+            theme: default_theme(),
+            font_size: default_font_size(),
         }
     }
 }
@@ -361,16 +250,10 @@ pub struct VaultConfig {
 
 impl Default for VaultConfig {
     fn default() -> Self {
-        Self { enabled: true, redact_local: false, custom_patterns: vec![] }
-    }
-}
-
-impl VaultConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
         Self {
-            enabled: merge_scalar(base.enabled, overlay.enabled, true),
-            redact_local: merge_scalar(base.redact_local, overlay.redact_local, false),
-            custom_patterns: if overlay.custom_patterns.is_empty() { base.custom_patterns } else { overlay.custom_patterns },
+            enabled: true,
+            redact_local: false,
+            custom_patterns: vec![],
         }
     }
 }
@@ -394,16 +277,10 @@ pub struct SmartContextConfig {
 
 impl Default for SmartContextConfig {
     fn default() -> Self {
-        Self { enabled: true, file_size_threshold_bytes: 2048, chunk_size_threshold_bytes: 1024 }
-    }
-}
-
-impl SmartContextConfig {
-    pub fn merge(base: Self, overlay: Self) -> Self {
         Self {
-            enabled: merge_scalar(base.enabled, overlay.enabled, true),
-            file_size_threshold_bytes: merge_scalar(base.file_size_threshold_bytes, overlay.file_size_threshold_bytes, 2048),
-            chunk_size_threshold_bytes: merge_scalar(base.chunk_size_threshold_bytes, overlay.chunk_size_threshold_bytes, 1024),
+            enabled: true,
+            file_size_threshold_bytes: 2048,
+            chunk_size_threshold_bytes: 1024,
         }
     }
 }
@@ -414,24 +291,20 @@ pub struct RouterConfigSchema {
     pub enabled: bool,
     #[serde(default = "default_true")]
     pub prefer_cheapest: bool,
+    #[serde(default)]
     pub max_cost_per_request_usd: Option<f64>,
     /// If set, pin to this provider and disable auto-routing.
+    #[serde(default)]
     pub pinned: Option<String>,
 }
 
 impl Default for RouterConfigSchema {
     fn default() -> Self {
-        Self { enabled: false, prefer_cheapest: true, max_cost_per_request_usd: None, pinned: None }
-    }
-}
-
-impl RouterConfigSchema {
-    pub fn merge(base: Self, overlay: Self) -> Self {
         Self {
-            enabled: merge_scalar(base.enabled, overlay.enabled, false),
-            prefer_cheapest: merge_scalar(base.prefer_cheapest, overlay.prefer_cheapest, true),
-            max_cost_per_request_usd: overlay.max_cost_per_request_usd.or(base.max_cost_per_request_usd),
-            pinned: overlay.pinned.or(base.pinned),
+            enabled: false,
+            prefer_cheapest: true,
+            max_cost_per_request_usd: None,
+            pinned: None,
         }
     }
 }
@@ -452,24 +325,28 @@ pub struct VerifyConfigSchema {
 
 impl Default for VerifyConfigSchema {
     fn default() -> Self {
-        Self { enabled: true, run_tests: false, run_linter: true, timeout_seconds: 60, max_retries: 1 }
-    }
-}
-
-impl VerifyConfigSchema {
-    pub fn merge(base: Self, overlay: Self) -> Self {
         Self {
-            enabled: merge_scalar(base.enabled, overlay.enabled, true),
-            run_tests: merge_scalar(base.run_tests, overlay.run_tests, false),
-            run_linter: merge_scalar(base.run_linter, overlay.run_linter, true),
-            timeout_seconds: merge_scalar(base.timeout_seconds, overlay.timeout_seconds, 60),
-            max_retries: merge_scalar(base.max_retries, overlay.max_retries, 1),
+            enabled: true,
+            run_tests: false,
+            run_linter: true,
+            timeout_seconds: 60,
+            max_retries: 1,
         }
     }
 }
 
-fn default_true() -> bool { true }
-fn default_file_size_threshold() -> usize { 2048 }
-fn default_chunk_size_threshold() -> usize { 1024 }
-fn default_timeout() -> u64 { 60 }
-fn default_max_retries() -> u32 { 1 }
+fn default_true() -> bool {
+    true
+}
+fn default_file_size_threshold() -> usize {
+    2048
+}
+fn default_chunk_size_threshold() -> usize {
+    1024
+}
+fn default_timeout() -> u64 {
+    60
+}
+fn default_max_retries() -> u32 {
+    1
+}

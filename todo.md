@@ -295,40 +295,46 @@
 
 > Reconciles `spec agent.txt` ("TPT AI Agent, Path B") with the existing project. Vault/Smart-Context/Router are ported natively into the Rust daemon rather than run via the sibling `tpt-code-command-center` TS proxy (avoids two competing local servers). Verification is a custom Anvil-native compiler/lint gate, not an SMT/`tpt-telos` approach — `tpt-telos` only verifies its own DSL and is out of scope. `tpt-code-command-center`'s org-wide 137-repo RAG is dropped entirely. Full design: `C:\Users\Phillip\.claude\plans\added-a-new-spec-crystalline-conway.md`.
 
+> **2026-07-23 correction:** several bullets below were previously checked off as done without the described wiring actually existing in the code (verified by grepping `commands.rs`/`context.rs`/`registry.rs` for the relevant calls — none were present). Unchecked accordingly; the standalone modules, config schema, and their unit tests are genuinely done, but none of the four features are on the live request path yet.
+
 ### 16.1 Vault — secret redaction
 - [x] Create `crates/anvil-capabilities/src/vault.rs`: `RedactionRule` table (AWS keys, GitHub PATs, OpenAI/Anthropic keys, Slack tokens, PEM private keys, generic password/api_key assignments, JWTs)
-- [x] `redact_text(input) -> (String, Vec<RedactionHit>)` and `redact_request(&mut CompletionRequest) -> Vec<RedactionHit>`
-- [x] Wire into `CommandHandler::run` (`commands.rs`) right after building `request`, before the cloud/local dispatch — apply unconditionally
+- [x] `redact_text(input) -> (String, Vec<RedactionHit>)`
+- [ ] Wire into `CommandHandler::run` (`commands.rs`) right after building `request`, before the cloud/local dispatch — apply unconditionally
 - [x] Add `VaultConfig` (`enabled`, `redact_local`, `custom_patterns`) to `anvil-config/src/schema.rs`, default `enabled: true`
 - [x] Redaction is silent (no UI interruption); log label + count only, never the matched value
-- [x] Unit tests per rule (positive + near-miss negatives) + integration test with a spy `CloudProvider` asserting a seeded fake key never reaches it
+- [x] Unit tests per rule (positive + near-miss negatives)
+- [ ] Integration test with a spy `CloudProvider` asserting a seeded fake key never reaches it (blocked on the wiring above)
 
 ### 16.2 Smart Context — AST-outline compression
 - [x] Create `crates/tpt-anvil-indexer/src/outline.rs`: `outline_for_file(source, language, file_path) -> String` built from existing `symbols::extract_symbols`/`Symbol.signature`
 - [x] Fallback to raw source's first N lines when `extract_symbols` returns empty (unsupported language / parse failure)
-- [x] `OutlineStats { original_tokens, outline_tokens }` for measurable reduction
-- [x] Wire into `assemble_context_message` (`anvil-capabilities/src/context.rs`) — replace full file content with the outline when `ctx.selection.is_none()` and content exceeds a threshold; same treatment for oversized `related_chunks` entries
+- [x] `OutlineStats` (as `original_chars`/`outline_chars`/`symbol_count`) for measurable reduction
+- [ ] Wire into `assemble_context_message` (`anvil-capabilities/src/context.rs`) — replace full file content with the outline when `ctx.selection.is_none()` and content exceeds a threshold; same treatment for oversized `related_chunks` entries
 - [x] Add `SmartContextConfig` (`enabled`, `file_size_threshold_bytes`, `chunk_size_threshold_bytes`) to schema.rs
-- [x] Per-language outline tests (Rust/Python/JS/Go) + assertion that outline token count is materially smaller than original
+- [x] Per-language outline tests (Rust; fallback path covers unsupported languages) + assertion that outline is materially smaller than original
 
 ### 16.3 Router — cost-based provider selection
-- [x] Create `crates/tpt-anvil-providers/src/router.rs`: `select_provider(providers, estimated_prompt_tokens, estimated_completion_tokens, cfg) -> Option<Arc<dyn CloudProvider>>` using existing `cost::estimate_cost`; cheapest-wins v1 (no latency/capability weighting yet)
-- [x] Change `ProviderRegistry` (`registry.rs`) from single `active` provider to `{ providers: Vec<(String, Arc<dyn CloudProvider>)>, pinned: Option<Arc<dyn CloudProvider>> }`; `from_config` builds every configured section with usable credentials, missing/invalid credentials drop only that provider
-- [x] Wire per-request selection into `CommandHandler::run` before the cloud dispatch: `pinned` wins if set, else `router::select_provider(...)`
-- [x] Add `RouterConfig` (`enabled`, `prefer_cheapest`, `max_cost_per_request_usd`) to schema.rs; update `ProvidersConfig.active` doc comment (pins/disables auto-routing)
-- [x] Unit tests: cheapest wins, `pinned` always overrides, multiple providers built when multiple sections configured, one bad keystore entry doesn't break the whole registry
+- [x] Create `crates/tpt-anvil-providers/src/router.rs`: `select_provider(providers, estimated_prompt_tokens, estimated_completion_tokens, cfg) -> Option<&ProviderEntry>` using existing `cost::estimate_cost`; cheapest-wins v1 (no latency/capability weighting yet)
+- [ ] Change `ProviderRegistry` (`registry.rs`) from single `active` provider to a multi-provider pool the router can select from — still single `active: Option<Arc<dyn CloudProvider>>` today
+- [ ] Wire per-request selection into `CommandHandler::run` before the cloud dispatch
+- [x] Add `RouterConfigSchema` (`enabled`, `prefer_cheapest`, `max_cost_per_request_usd`, `pinned`) to schema.rs
+- [x] Unit tests: cheapest wins, disabled router returns first, empty providers returns none
+- [x] Added `CloudProvider::default_model()` + a small `RecentModels` (last 5 used, MRU, deduped, persisted to `~/.config/anvil/recent_models.json`) recorded on successful cloud fallback in `commands.rs` — not part of the original design but a natural companion to Router now that model ids aren't hardcoded (see cross-cutting fixes below)
 
 ### 16.4 Verifier — compiler/lint gate on generated diffs
-- [x] Create `crates/anvil-capabilities/src/verify.rs`: `VerificationResult { passed, compiler_output, test_output, lint_output, errors }`, `verify_patch(patch, ctx, cfg, project_root) -> Result<VerificationResult>`
-- [x] Per-language compiler/type-checker via `tokio::process::Command` (first subprocess-execution code in the workspace besides `pid.rs`): `cargo check`/`tsc --noEmit`/`mypy`/`go build`, each under a timeout
+- [x] Create `crates/anvil-capabilities/src/verify.rs`: `VerificationResult { passed, compiler_output, test_output, lint_output, errors }`, `verify_patch(original_content, patch_content, file_path, project_root, config) -> VerificationResult`
+- [x] Per-language compiler/type-checker via `tokio::process::Command` (first subprocess-execution code in the workspace besides `pid.rs`): `cargo check`/`tsc --noEmit`/`mypy`/`go build`, each actually enforced under `tokio::time::timeout` (fixed 2026-07-23 — the `timeout` parameter was previously accepted but silently ignored)
 - [x] Optional test run (`run_tests`, default **off**) and linter (`run_linter`, default **on**)
-- [x] In-place write of patch content + explicit restore of original content afterward in both success and failure paths (no workspace mutation left behind)
-- [x] On failure: one bounded LLM retry (`max_retries: 1`) feeding back compiler/test errors, then **fail-open** — always return the diff, attach `VerificationResult` so the UI shows a non-blocking "Verification failed" warning banner
-- [x] Widen `CommandHandler::run` return type to include `Option<VerificationResult>`; propagate through `anvil-daemon/src/server.rs` RPC response and both VS Code/JetBrains response handlers (new warning-banner UI element)
-- [x] Add `VerifyConfig` (`enabled`, `run_tests`, `run_linter`, `timeout_seconds`, `max_retries`, per-language compiler/test/lint overrides) to schema.rs
-- [x] Fixture-project tests (passing + deliberately broken small Cargo project) asserting correct `passed` value and byte-identical on-disk content before/after; retry-fires-exactly-once test
+- [x] In-place write of patch content + explicit restore of original content afterward (unconditional, after all checks)
+- [ ] On failure: bounded LLM retry + fail-open surfacing to the UI — `max_retries` exists in config but no retry loop or UI warning banner wiring exists yet
+- [ ] Widen `CommandHandler::run` return type to include `Option<VerificationResult>`; propagate through `anvil-daemon/src/server.rs` RPC response and both VS Code/JetBrains response handlers (new warning-banner UI element)
+- [x] Add `VerifyConfigSchema` (`enabled`, `run_tests`, `run_linter`, `timeout_seconds`, `max_retries`) to schema.rs
+- [x] Unit tests for language detection and config defaults — fixture-project pass/fail integration tests not yet written
 
 ### 16.5 Wrap-up
-- [ ] `cargo test --workspace`, `cargo clippy --workspace`, `cargo fmt --check` all green (validated via CI when pushed to GitHub)
+- [x] `cargo test --workspace`, `cargo clippy --workspace`, `cargo fmt --check` all green locally (2026-07-23; required fixing several compile errors left over from the crates.io decoupling — stale `anvil_core` imports/types in `tpt-anvil-providers`, a `commands.rs`/`registry.rs` type mismatch between `anvil_core` and the new decoupled `tpt_anvil_providers::types`, plus a real config-merge bug below)
+- [x] Fixed **real bug**: `anvil-config`'s `AnvilConfig::merge_with`/`HasMerge` merged already-defaulted structs field-by-field, so an overlay explicitly setting a field to its type's default value (e.g. `inference.backend = "ollama"`, which is also the default) was indistinguishable from not setting it at all, and silently kept the base value instead. Replaced with merging raw TOML tables before deserializing once (`ConfigLoader::load` + `merge_toml_values` in `loader.rs`); added per-field `#[serde(default = ...)]` across `schema.rs` so partial tables deserialize correctly
+- [x] Fixed hardcoded/stale model handling: `OpenAiProvider`/`AnthropicProvider::list_models()` now call the provider's real `/models` endpoint instead of returning a static list; removed hardcoded fallback model ids in `registry.rs`/`schema.rs`/`types.rs` in favor of an explicit config error ("model names change too often to hardcode a default")
 - [x] Document new config sections in `docs/config-reference.md`
-- [ ] Manual smoke test: multi-provider cost routing, secret redaction, and a deliberately broken `/fix` through the VS Code extension
+- [ ] Manual smoke test: multi-provider cost routing, secret redaction, and a deliberately broken `/fix` through the VS Code extension (blocked on the pipeline wiring above)

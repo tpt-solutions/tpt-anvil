@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use anvil_core::types::{ChatMessage, Role};
+use anvil_core::types::{ChatMessage, CompletionRequest, Role};
 
 /// Format a message list into a raw prompt string for models that don't accept chat format.
 pub fn format_prompt(messages: &[ChatMessage], template: PromptTemplate) -> String {
@@ -100,7 +100,7 @@ pub fn apply_chat_template(request: &CompletionRequest) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-use anvil_core::types::{ChatMessage, CompletionRequest, Role};
+    use anvil_core::types::{ChatMessage, Role};
 
     fn msg(role: Role, content: &str) -> ChatMessage {
         ChatMessage {

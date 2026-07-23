@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
+use crate::types::{
+    BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Result, StreamChunk,
+};
 use crate::{openai::OpenAiProvider, provider::CloudProvider};
-use crate::types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Result, StreamChunk};
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
@@ -11,7 +13,11 @@ pub struct AzureOpenAiProvider(OpenAiProvider);
 
 impl AzureOpenAiProvider {
     /// endpoint: e.g. "https://my-resource.openai.azure.com/openai/deployments/my-deployment"
-    pub fn new(api_key: impl Into<String>, endpoint: impl Into<String>, api_version: &str) -> Result<Self> {
+    pub fn new(
+        api_key: impl Into<String>,
+        endpoint: impl Into<String>,
+        api_version: &str,
+    ) -> Result<Self> {
         let base = format!(
             "{}?api-version={}",
             endpoint.into().trim_end_matches('/'),
@@ -30,6 +36,10 @@ impl AzureOpenAiProvider {
 impl CloudProvider for AzureOpenAiProvider {
     fn name(&self) -> &str {
         "azure"
+    }
+
+    fn default_model(&self) -> &str {
+        self.0.default_model()
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {

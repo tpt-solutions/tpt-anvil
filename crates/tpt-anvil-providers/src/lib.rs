@@ -9,6 +9,7 @@ pub mod keystore;
 pub mod openai;
 pub mod openrouter;
 pub mod provider;
+pub mod recent_models;
 pub mod registry;
 pub mod retry;
 pub mod router;

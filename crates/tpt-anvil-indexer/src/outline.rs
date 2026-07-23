@@ -5,7 +5,7 @@
 //! Generates compact outlines of source files from extracted symbols,
 //! reducing token consumption while preserving structural information.
 
-use crate::symbols::{extract_symbols, Symbol};
+use crate::symbols::extract_symbols;
 use serde::{Deserialize, Serialize};
 
 /// Statistics about outline compression.
@@ -25,15 +25,15 @@ pub fn outline_for_file(source: &str, language: &str, file_path: &str) -> String
 
     if symbols.is_empty() {
         // Fallback: return first 80 lines of source
-        return source
-            .lines()
-            .take(80)
-            .collect::<Vec<_>>()
-            .join("\n");
+        return source.lines().take(80).collect::<Vec<_>>().join("\n");
     }
 
     let mut outline = String::new();
-    outline.push_str(&format!("// Outline of {} ({} symbols)\n\n", file_path, symbols.len()));
+    outline.push_str(&format!(
+        "// Outline of {} ({} symbols)\n\n",
+        file_path,
+        symbols.len()
+    ));
 
     for sym in &symbols {
         let kind_label = match sym.kind {
@@ -56,9 +56,21 @@ pub fn outline_for_file(source: &str, language: &str, file_path: &str) -> String
         }
 
         if let Some(ref sig) = sym.signature {
-            outline.push_str(&format!("{} {} (lines {}-{})\n", kind_label, sig, sym.start_line + 1, sym.end_line + 1));
+            outline.push_str(&format!(
+                "{} {} (lines {}-{})\n",
+                kind_label,
+                sig,
+                sym.start_line + 1,
+                sym.end_line + 1
+            ));
         } else {
-            outline.push_str(&format!("{} {} (lines {}-{})\n", kind_label, sym.name, sym.start_line + 1, sym.end_line + 1));
+            outline.push_str(&format!(
+                "{} {} (lines {}-{})\n",
+                kind_label,
+                sym.name,
+                sym.start_line + 1,
+                sym.end_line + 1
+            ));
         }
     }
 
@@ -102,7 +114,10 @@ impl Person {
         let outline = outline_for_file(src, "rust", "src/lib.rs");
         assert!(outline.contains("fn greet"));
         assert!(outline.contains("struct Person"));
-        assert!(outline.len() < src.len(), "outline should be shorter than source");
+        assert!(
+            outline.len() < src.len(),
+            "outline should be shorter than source"
+        );
     }
 
     #[test]

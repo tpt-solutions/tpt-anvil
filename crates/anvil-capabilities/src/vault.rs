@@ -4,8 +4,9 @@
 //! Secret redaction vault — prevents accidental leaking of API keys,
 //! passwords, and other secrets to LLM providers.
 
-use regex::Regex;
+use anvil_core::types::CompletionRequest;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 /// A redaction rule that matches a pattern in text.
@@ -164,6 +165,19 @@ pub fn redact_text(input: &str, config: &VaultConfig) -> (String, Vec<RedactionH
     (output, hits)
 }
 
+/// Redact secrets from every message in a completion request, in place.
+/// Returns the aggregated list of what was found (labels + counts, never the
+/// matched values) across all messages.
+pub fn redact_request(request: &mut CompletionRequest, config: &VaultConfig) -> Vec<RedactionHit> {
+    let mut hits = Vec::new();
+    for message in &mut request.messages {
+        let (redacted, message_hits) = redact_text(&message.content, config);
+        message.content = redacted;
+        hits.extend(message_hits);
+    }
+    hits
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,12 +187,14 @@ mod tests {
         let input = "My key is sk-abc123def456ghi789jkl012mno345pqr678stu901vwx234T3BlbkFJtest1234567890abcdef";
         let (redacted, hits) = redact_text(input, &VaultConfig::default());
         assert!(!redacted.contains("sk-"));
-        assert!(hits.iter().any(|h| h.label == "OpenAI Short Key" || h.label == "OpenAI API Key"));
+        assert!(hits
+            .iter()
+            .any(|h| h.label == "OpenAI Short Key" || h.label == "OpenAI API Key"));
     }
 
     #[test]
     fn redacts_github_pat() {
-        let input = "token: ghp_abcdefghijklmnopqrstuvwxyz123456";
+        let input = "token: ghp_abcdefghijklmnopqrstuvwxyz1234567890";
         let (redacted, hits) = redact_text(input, &VaultConfig::default());
         assert!(!redacted.contains("ghp_"));
         assert!(hits.iter().any(|h| h.label == "GitHub PAT"));
@@ -194,7 +210,8 @@ mod tests {
 
     #[test]
     fn redacts_private_key() {
-        let input = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQ...\n-----END RSA PRIVATE KEY-----";
+        let input =
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQ...\n-----END RSA PRIVATE KEY-----";
         let (redacted, hits) = redact_text(input, &VaultConfig::default());
         assert!(!redacted.contains("PRIVATE KEY"));
         assert!(hits.iter().any(|h| h.label == "PEM Private Key"));
@@ -211,7 +228,7 @@ mod tests {
     #[test]
     fn redacts_password_assignment() {
         let input = r#"password = "super_secret_123""#;
-        let (redacted, hits) = redact_text(input, &VaultConfig::default());
+        let (redacted, _hits) = redact_text(input, &VaultConfig::default());
         assert!(redacted.contains("[REDACTED_PASSWORD]") || !redacted.contains("super_secret_123"));
     }
 
@@ -224,9 +241,37 @@ mod tests {
     }
 
     #[test]
+    fn redact_request_scrubs_all_messages() {
+        use anvil_core::types::{ChatMessage, Role};
+        let mut request = CompletionRequest {
+            messages: vec![
+                ChatMessage {
+                    role: Role::System,
+                    content: "you are helpful".into(),
+                },
+                ChatMessage {
+                    role: Role::User,
+                    content: "here is my key: ghp_abcdefghijklmnopqrstuvwxyz1234567890".into(),
+                },
+            ],
+            model: None,
+            max_tokens: 2048,
+            temperature: 0.2,
+            stream: true,
+        };
+        let hits = redact_request(&mut request, &VaultConfig::default());
+        assert!(!hits.is_empty());
+        assert!(!request.messages[1].content.contains("ghp_"));
+        assert_eq!(request.messages[0].content, "you are helpful");
+    }
+
+    #[test]
     fn disabled_vault_returns_input() {
         let input = "sk-abc123def456ghi789jkl012mno345pqr678stu901vwx234";
-        let cfg = VaultConfig { enabled: false, ..Default::default() };
+        let cfg = VaultConfig {
+            enabled: false,
+            ..Default::default()
+        };
         let (redacted, hits) = redact_text(input, &cfg);
         assert_eq!(redacted, input);
         assert!(hits.is_empty());

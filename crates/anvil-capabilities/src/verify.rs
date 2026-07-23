@@ -4,12 +4,12 @@
 //! Verification gate — runs compiler checks and linters on generated diffs
 //! before applying them, providing a safety net against broken code.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
-use tracing::{info, warn};
+use tracing::info;
 
 /// Configuration for the verification gate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,7 +69,10 @@ fn compiler_command(language: &str, project_root: &Path) -> Option<(String, Vec<
                 Some(("npx".into(), vec!["tsc".into(), "--noEmit".into()]))
             }
         }
-        "python" => Some(("python3".into(), vec!["-m".into(), "mypy".into(), ".".into()])),
+        "python" => Some((
+            "python3".into(),
+            vec!["-m".into(), "mypy".into(), ".".into()],
+        )),
         "go" => Some(("go".into(), vec!["build".into(), "./...".into()])),
         _ => None,
     }
@@ -78,9 +81,15 @@ fn compiler_command(language: &str, project_root: &Path) -> Option<(String, Vec<
 /// Get the appropriate linter command for a language.
 fn linter_command(language: &str, project_root: &Path) -> Option<(String, Vec<String>)> {
     match language {
-        "rust" => Some(("cargo".into(), vec!["clippy".into(), "--".into(), "-D".into(), "warnings".into()])),
+        "rust" => Some((
+            "cargo".into(),
+            vec!["clippy".into(), "--".into(), "-D".into(), "warnings".into()],
+        )),
         "typescript" | "javascript" => {
-            let eslint = project_root.join("node_modules").join(".bin").join("eslint");
+            let eslint = project_root
+                .join("node_modules")
+                .join(".bin")
+                .join("eslint");
             if eslint.exists() {
                 Some((eslint.to_str()?.into(), vec![".".into()]))
             } else {
@@ -103,27 +112,61 @@ fn test_command(language: &str) -> Option<(String, Vec<String>)> {
 }
 
 /// Run a subprocess with a timeout.
-async fn run_command(
-    cmd: &str,
-    args: &[String],
-    cwd: &Path,
-    timeout: Duration,
-) -> (bool, String) {
-    let output = Command::new(cmd)
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .await;
+async fn run_command(cmd: &str, args: &[String], cwd: &Path, timeout: Duration) -> (bool, String) {
+    let run = Command::new(cmd).args(args).current_dir(cwd).output();
 
-    match output {
-        Ok(output) => {
+    match tokio::time::timeout(timeout, run).await {
+        Ok(Ok(output)) => {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let combined = format!("{stdout}\n{stderr}");
             (output.status.success(), combined)
         }
-        Err(e) => (false, format!("failed to run {cmd}: {e}")),
+        Ok(Err(e)) => (false, format!("failed to run {cmd}: {e}")),
+        Err(_) => (
+            false,
+            format!("{cmd} timed out after {}s", timeout.as_secs()),
+        ),
     }
+}
+
+/// Resolve `file_path` against `project_root`, rejecting anything that would
+/// escape the project directory (absolute paths, `..` traversal, or symlinks
+/// that resolve outside the root). `file_path` comes from client-supplied
+/// `CodeContext` over the IPC channel and must never be trusted directly for
+/// filesystem writes.
+async fn resolve_target(project_root: &Path, file_path: &str) -> Result<std::path::PathBuf, String> {
+    let requested = Path::new(file_path);
+    if requested.is_absolute() || requested.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err(format!("rejected file path outside project root: {file_path}"));
+    }
+
+    let canonical_root = tokio::fs::canonicalize(project_root)
+        .await
+        .map_err(|e| format!("failed to resolve project root: {e}"))?;
+
+    let target = canonical_root.join(requested);
+
+    // The target file may not exist yet (a brand-new file); canonicalize
+    // whichever ancestor does exist and confirm it's still inside the root.
+    let mut check = target.clone();
+    let canonical_check = loop {
+        match tokio::fs::canonicalize(&check).await {
+            Ok(c) => break c,
+            Err(_) => {
+                let Some(parent) = check.parent() else {
+                    return Err(format!("failed to resolve path ancestor for: {file_path}"));
+                };
+                check = parent.to_path_buf();
+            }
+        }
+    };
+
+    if !canonical_check.starts_with(&canonical_root) {
+        return Err(format!("rejected file path outside project root: {file_path}"));
+    }
+
+    Ok(target)
 }
 
 /// Verify a patch by temporarily applying it, running checks, then restoring.
@@ -159,9 +202,29 @@ pub async fn verify_patch(
         errors: vec![],
     };
 
-    // Write patched content temporarily
-    let target = project_root.join(file_path);
-    let backup = target.with_extension("anvil.bak");
+    // `file_path` originates from client-supplied `CodeContext` over the IPC
+    // channel, so it must be confined to `project_root` before we touch the
+    // filesystem: reject absolute paths, `..` traversal, and symlink escapes
+    // by canonicalizing and checking containment.
+    let target = match resolve_target(project_root, file_path).await {
+        Ok(t) => t,
+        Err(e) => {
+            result.passed = false;
+            result.errors.push(e);
+            return result;
+        }
+    };
+
+    // Backup original to a dedicated temp file (not a predictable sibling
+    // of the target) so verification never leaves a stray file next to it.
+    let backup_suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let backup = std::env::temp_dir().join(format!(
+        "anvil-verify-{}-{backup_suffix}.bak",
+        std::process::id()
+    ));
 
     // Backup original
     if target.exists() {
@@ -177,7 +240,9 @@ pub async fn verify_patch(
         result.compiler_output = Some(output.clone());
         if !passed {
             result.passed = false;
-            result.errors.push(format!("compiler check failed:\n{output}"));
+            result
+                .errors
+                .push(format!("compiler check failed:\n{output}"));
         }
     }
 
@@ -239,5 +304,42 @@ mod tests {
         assert!(cfg.enabled);
         assert!(!cfg.run_tests);
         assert!(cfg.run_linter);
+    }
+
+    #[tokio::test]
+    async fn resolve_target_rejects_parent_traversal() {
+        let root = std::env::temp_dir();
+        let err = resolve_target(&root, "../../../etc/passwd").await.unwrap_err();
+        assert!(err.contains("outside project root"));
+    }
+
+    #[tokio::test]
+    async fn resolve_target_rejects_absolute_path() {
+        let root = std::env::temp_dir();
+        #[cfg(unix)]
+        let abs = "/etc/passwd";
+        #[cfg(windows)]
+        let abs = r"C:\Windows\System32\drivers\etc\hosts";
+        let err = resolve_target(&root, abs).await.unwrap_err();
+        assert!(err.contains("outside project root"));
+    }
+
+    #[tokio::test]
+    async fn resolve_target_accepts_contained_new_file() {
+        let root = tempdir_for_test();
+        let resolved = resolve_target(&root, "src/new_file.rs").await.unwrap();
+        assert!(resolved.starts_with(tokio::fs::canonicalize(&root).await.unwrap()));
+    }
+
+    fn tempdir_for_test() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "anvil-verify-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        dir
     }
 }

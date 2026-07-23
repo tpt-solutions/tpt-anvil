@@ -4,12 +4,12 @@
 use std::sync::Arc;
 
 use anvil_core::{
-    types::{CodeContext, CompletionRequest, DiffPatch, StreamChunk},
+    types::{CodeContext, CompletionRequest, DiffPatch, Role, StreamChunk},
     Result,
 };
 use anvil_inference::backend::InferenceBackend;
-use tpt_anvil_providers::provider::CloudProvider;
 use tokio::sync::{mpsc, Mutex};
+use tpt_anvil_providers::{provider::CloudProvider, recent_models::RecentModels};
 use tracing::info;
 
 use crate::{
@@ -58,10 +58,49 @@ impl Command {
     }
 }
 
+/// `tpt-anvil-providers` is decoupled from `anvil-core` for standalone
+/// crates.io publishing, so it defines its own `CompletionRequest`/`ChatMessage`
+/// instead of depending on `anvil_core::types` directly. These convert between
+/// the two shapes at the one place they meet: the cloud-provider call site.
+fn to_provider_request(req: &CompletionRequest) -> tpt_anvil_providers::types::CompletionRequest {
+    tpt_anvil_providers::types::CompletionRequest {
+        messages: req
+            .messages
+            .iter()
+            .map(|m| tpt_anvil_providers::types::ChatMessage {
+                role: match m.role {
+                    Role::System => tpt_anvil_providers::types::Role::System,
+                    Role::User => tpt_anvil_providers::types::Role::User,
+                    Role::Assistant => tpt_anvil_providers::types::Role::Assistant,
+                },
+                content: m.content.clone(),
+            })
+            .collect(),
+        model: req.model.clone(),
+        max_tokens: req.max_tokens,
+        temperature: req.temperature,
+        stream: req.stream,
+    }
+}
+
+fn from_provider_chunk(chunk: tpt_anvil_providers::types::StreamChunk) -> StreamChunk {
+    StreamChunk {
+        delta: chunk.delta,
+        done: chunk.done,
+    }
+}
+
+/// Where the recently-used-models list is persisted, so it survives daemon
+/// restarts (`~/.config/anvil/recent_models.json` or platform equivalent).
+fn recent_models_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("anvil").join("recent_models.json"))
+}
+
 pub struct CommandHandler {
     local_backend: Arc<dyn InferenceBackend>,
     cloud_provider: Option<Arc<dyn CloudProvider>>,
     conversations: Arc<Mutex<ConversationStore>>,
+    recent_models: Arc<Mutex<RecentModels>>,
 }
 
 impl CommandHandler {
@@ -69,11 +108,21 @@ impl CommandHandler {
         local_backend: Arc<dyn InferenceBackend>,
         cloud_provider: Option<Arc<dyn CloudProvider>>,
     ) -> Self {
+        let recent_models = recent_models_path()
+            .map(|p| RecentModels::load(&p))
+            .unwrap_or_default();
         Self {
             local_backend,
             cloud_provider,
             conversations: Arc::new(Mutex::new(ConversationStore::default())),
+            recent_models: Arc::new(Mutex::new(recent_models)),
         }
+    }
+
+    /// The last few (provider, model) pairs actually used, most recent first —
+    /// lets IDE UIs offer a quick-pick list instead of the full live catalog.
+    pub async fn recent_models(&self) -> Vec<tpt_anvil_providers::recent_models::RecentModel> {
+        self.recent_models.lock().await.list().to_vec()
     }
 
     /// Run a slash command, streaming output tokens via `tx`.
@@ -119,6 +168,7 @@ impl CommandHandler {
         let req_clone = request.clone();
         let forward_tx = tx.clone();
         let collect_tx_clone = collect_tx.clone();
+        let recent_models = Arc::clone(&self.recent_models);
 
         tokio::spawn(async move {
             match backend.stream(&req_clone, collect_tx_clone.clone()).await {
@@ -129,7 +179,31 @@ impl CommandHandler {
                             "local backend failed ({e}); falling back to cloud provider {}",
                             provider.name()
                         );
-                        let _ = provider.stream(&req_clone, collect_tx_clone).await;
+                        let provider_req = to_provider_request(&req_clone);
+                        let (provider_tx, mut provider_rx) =
+                            mpsc::channel::<tpt_anvil_providers::types::StreamChunk>(256);
+                        let forward = tokio::spawn(async move {
+                            while let Some(chunk) = provider_rx.recv().await {
+                                let done = chunk.done;
+                                let _ = collect_tx_clone.send(from_provider_chunk(chunk)).await;
+                                if done {
+                                    break;
+                                }
+                            }
+                        });
+                        let result = provider.stream(&provider_req, provider_tx).await;
+                        let _ = forward.await;
+                        if result.is_ok() {
+                            let model_used = req_clone
+                                .model
+                                .clone()
+                                .unwrap_or_else(|| provider.default_model().to_string());
+                            let mut recent = recent_models.lock().await;
+                            recent.record(provider.name(), model_used);
+                            if let Some(path) = recent_models_path() {
+                                let _ = recent.save(&path);
+                            }
+                        }
                     }
                 }
             }

@@ -61,7 +61,11 @@ impl CandleBackend {
             _ => Device::Cpu,
         };
 
-        tracing::info!("loading GGUF model from {} on candle ({})", model_path, accel_device.label());
+        tracing::info!(
+            "loading GGUF model from {} on candle ({})",
+            model_path,
+            accel_device.label()
+        );
 
         let model_config = load_gguf_config(model_path)?;
 
@@ -91,7 +95,8 @@ impl CandleBackend {
 
     fn tokenize_text(&self, text: &str) -> Result<Vec<u32>> {
         if let Some(ref tok) = self.tokenizer {
-            let encoding = tok.encode(text, true)
+            let encoding = tok
+                .encode(text, true)
                 .map_err(|e| AnvilError::Inference(format!("tokenization failed: {e}")))?;
             Ok(encoding.get_ids().to_vec())
         } else {
@@ -203,19 +208,15 @@ impl InferenceBackend for CandleBackend {
                 let input_len = all_tokens.len();
                 let start_pos = input_len.saturating_sub(config.context_length as usize);
 
-                let input_tensor = Tensor::new(
-                    &all_tokens[start_pos..],
-                    &device,
-                )
-                .map_err(|e| AnvilError::Inference(format!("tensor creation failed: {e}")))?;
+                let input_tensor = Tensor::new(&all_tokens[start_pos..], &device)
+                    .map_err(|e| AnvilError::Inference(format!("tensor creation failed: {e}")))?;
 
-                let logits = llama.forward(&input_tensor, start_pos)
+                let logits = llama
+                    .forward(&input_tensor, start_pos)
                     .map_err(|e| AnvilError::Inference(format!("forward pass failed: {e}")))?;
 
                 // Get the last token's logits and sample
-                let last_logits = logits
-                    .get(0)?
-                    .get(logits.dim(1)? - 1)?;
+                let last_logits = logits.get(0)?.get(logits.dim(1)? - 1)?;
 
                 let token_id = sample_token(&last_logits, request.temperature)?;
                 all_tokens.push(token_id);
@@ -268,18 +269,14 @@ impl InferenceBackend for CandleBackend {
                 let input_len = all_tokens.len();
                 let start_pos = input_len.saturating_sub(config.context_length as usize);
 
-                let input_tensor = Tensor::new(
-                    &all_tokens[start_pos..],
-                    &device,
-                )
-                .map_err(|e| AnvilError::Inference(format!("tensor creation failed: {e}")))?;
+                let input_tensor = Tensor::new(&all_tokens[start_pos..], &device)
+                    .map_err(|e| AnvilError::Inference(format!("tensor creation failed: {e}")))?;
 
-                let logits = llama.forward(&input_tensor, start_pos)
+                let logits = llama
+                    .forward(&input_tensor, start_pos)
                     .map_err(|e| AnvilError::Inference(format!("forward pass failed: {e}")))?;
 
-                let last_logits = logits
-                    .get(0)?
-                    .get(logits.dim(1)? - 1)?;
+                let last_logits = logits.get(0)?.get(logits.dim(1)? - 1)?;
 
                 let token_id = sample_token(&last_logits, request.temperature)?;
                 all_tokens.push(token_id);
@@ -336,7 +333,8 @@ struct CandleBackendClone {
 impl CandleBackendClone {
     fn tokenize_text(&self, text: &str) -> Result<Vec<u32>> {
         if let Some(ref tok) = self.tokenizer {
-            let encoding = tok.encode(text, true)
+            let encoding = tok
+                .encode(text, true)
                 .map_err(|e| AnvilError::Inference(format!("tokenization failed: {e}")))?;
             Ok(encoding.get_ids().to_vec())
         } else {
@@ -378,13 +376,17 @@ impl CandleLlama {
         let mut x = hidden;
         for _layer in &self.layers {
             // Placeholder: in real implementation, apply layer norm, attention, FFN
-            x = x
-                .clone();
+            x = x.clone();
         }
 
         // Project to vocab
         let logits = x
-            .matmul(&self.lm_head.t().map_err(|e| AnvilError::Inference(format!("transpose failed: {e}")))?)
+            .matmul(
+                &self
+                    .lm_head
+                    .t()
+                    .map_err(|e| AnvilError::Inference(format!("transpose failed: {e}")))?,
+            )
             .map_err(|e| AnvilError::Inference(format!("lm_head matmul failed: {e}")))?;
 
         Ok(logits)
@@ -423,7 +425,9 @@ fn load_candle_model(
         .map_err(|e| AnvilError::Inference(format!("init dummy tensor: {e}")))?;
 
     let layers = (0..config.n_layer)
-        .map(|_| CandleLayer { _dummy: dummy.clone() })
+        .map(|_| CandleLayer {
+            _dummy: dummy.clone(),
+        })
         .collect();
 
     Ok((

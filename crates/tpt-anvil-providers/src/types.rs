@@ -29,8 +29,12 @@ pub struct CompletionRequest {
     pub stream: bool,
 }
 
-fn default_max_tokens() -> u32 { 2048 }
-fn default_temperature() -> f32 { 0.2 }
+fn default_max_tokens() -> u32 {
+    2048
+}
+fn default_temperature() -> f32 {
+    0.2
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionResponse {
@@ -84,7 +88,9 @@ pub enum ProviderError {
 }
 
 impl From<anyhow::Error> for ProviderError {
-    fn from(e: anyhow::Error) -> Self { ProviderError::Other(e.to_string()) }
+    fn from(e: anyhow::Error) -> Self {
+        ProviderError::Other(e.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, ProviderError>;
@@ -110,9 +116,13 @@ impl Default for ProviderConfig {
     fn default() -> Self {
         Self {
             active: None,
-            openai_model: "gpt-4o".into(),
+            // Left empty rather than hardcoding a specific model id: model
+            // names change too often for a code-level default to stay
+            // current. `ProviderRegistry::from_config` requires the user to
+            // set one explicitly.
+            openai_model: String::new(),
             openai_api_key_entry: None,
-            anthropic_model: "claude-sonnet-5".into(),
+            anthropic_model: String::new(),
             anthropic_api_key_entry: None,
             openrouter_model: String::new(),
             openrouter_api_key_entry: None,

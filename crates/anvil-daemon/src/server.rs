@@ -11,13 +11,36 @@ use anvil_core::{
     types::StreamChunk,
 };
 use anvil_inference::registry::BackendRegistry;
-use tpt_anvil_providers::registry::ProviderRegistry;
 use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
+use tpt_anvil_providers::{registry::ProviderRegistry, types::ProviderConfig};
 use tracing::{error, info};
 
 use crate::pid;
+
+/// `tpt-anvil-providers` is decoupled from `anvil-config` for standalone
+/// crates.io publishing, so it defines its own minimal `ProviderConfig`
+/// instead of depending on `anvil_config::AnvilConfig` directly. This adapts
+/// the full daemon config into that minimal shape.
+fn to_provider_config(cfg: &anvil_config::AnvilConfig) -> ProviderConfig {
+    let p = &cfg.providers;
+    ProviderConfig {
+        active: p.active.clone(),
+        openai_model: p.openai.model.clone(),
+        openai_api_key_entry: p.openai.api_key_entry.clone(),
+        anthropic_model: p.anthropic.model.clone(),
+        anthropic_api_key_entry: p.anthropic.api_key_entry.clone(),
+        openrouter_model: p.openrouter.model.clone(),
+        openrouter_api_key_entry: p.openrouter.api_key_entry.clone(),
+        azure_endpoint: p.azure.endpoint.clone(),
+        azure_api_version: p.azure.api_version.clone(),
+        azure_api_key_entry: p.azure.api_key_entry.clone(),
+        custom_base_url: p.custom.base_url.clone(),
+        custom_model: p.custom.model.clone(),
+        custom_api_key_entry: p.custom.api_key_entry.clone(),
+    }
+}
 
 fn token_path() -> std::path::PathBuf {
     dirs::runtime_dir()
@@ -33,7 +56,7 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
 
     let backend_registry =
         BackendRegistry::from_config(&cfg).context("failed to initialize inference backend")?;
-    let provider_registry = ProviderRegistry::from_config(&cfg)?;
+    let provider_registry = ProviderRegistry::from_config(&to_provider_config(&cfg))?;
 
     let backend = Arc::clone(&backend_registry.active);
     let cloud = provider_registry.active.map(|p| Arc::clone(&p));
@@ -212,8 +235,12 @@ async fn run_windows(
 
 // ── Shared JSON-RPC handler ────────────────────────────────────────────────
 
-async fn handle_rpc<R, W>(reader: R, mut writer: W, handler: Arc<CommandHandler>, token: Arc<String>)
-where
+async fn handle_rpc<R, W>(
+    reader: R,
+    mut writer: W,
+    handler: Arc<CommandHandler>,
+    token: Arc<String>,
+) where
     R: tokio::io::AsyncRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
 {
@@ -234,7 +261,8 @@ where
         if req.method.as_str() != "health" {
             let provided = req.params.get("auth").and_then(|v| v.as_str());
             if provided != Some(token.as_str()) {
-                let err = JsonRpcResponse::err(id, -32001, "unauthorized: invalid or missing auth token");
+                let err =
+                    JsonRpcResponse::err(id, -32001, "unauthorized: invalid or missing auth token");
                 send_line(&mut writer, &err).await;
                 continue;
             }

@@ -100,13 +100,35 @@ mod tests {
 
     #[async_trait::async_trait]
     impl CloudProvider for MockProvider {
-        fn name(&self) -> &str { &self.name }
-        async fn list_models(&self) -> crate::types::Result<Vec<ModelInfo>> { Ok(vec![]) }
-        async fn complete(&self, _: &crate::types::CompletionRequest) -> crate::types::Result<crate::types::CompletionResponse> {
-            Ok(crate::types::CompletionResponse { content: String::new(), model: "mock".into(), usage: None })
+        fn name(&self) -> &str {
+            &self.name
         }
-        async fn stream(&self, _: &crate::types::CompletionRequest, _: tokio::sync::mpsc::Sender<crate::types::StreamChunk>) -> crate::types::Result<()> { Ok(()) }
-        async fn count_tokens(&self, _: &str) -> crate::types::Result<u32> { Ok(0) }
+        fn default_model(&self) -> &str {
+            "mock"
+        }
+        async fn list_models(&self) -> crate::types::Result<Vec<ModelInfo>> {
+            Ok(vec![])
+        }
+        async fn complete(
+            &self,
+            _: &crate::types::CompletionRequest,
+        ) -> crate::types::Result<crate::types::CompletionResponse> {
+            Ok(crate::types::CompletionResponse {
+                content: String::new(),
+                model: "mock".into(),
+                usage: None,
+            })
+        }
+        async fn stream(
+            &self,
+            _: &crate::types::CompletionRequest,
+            _: tokio::sync::mpsc::Sender<crate::types::StreamChunk>,
+        ) -> crate::types::Result<()> {
+            Ok(())
+        }
+        async fn count_tokens(&self, _: &str) -> crate::types::Result<u32> {
+            Ok(0)
+        }
     }
 
     #[test]
@@ -114,40 +136,52 @@ mod tests {
         let providers = vec![
             ProviderEntry {
                 name: "expensive".into(),
-                provider: Arc::new(MockProvider { name: "expensive".into() }),
+                provider: Arc::new(MockProvider {
+                    name: "expensive".into(),
+                }),
                 backend_kind: BackendKind::OpenAi,
                 model_id: "gpt-4o".into(),
             },
             ProviderEntry {
                 name: "cheap".into(),
-                provider: Arc::new(MockProvider { name: "cheap".into() }),
+                provider: Arc::new(MockProvider {
+                    name: "cheap".into(),
+                }),
                 backend_kind: BackendKind::OpenRouter,
                 model_id: "deepseek/deepseek-coder".into(),
             },
         ];
-        let config = RouterConfig { enabled: true, prefer_cheapest: true, max_cost_per_request_usd: None };
+        let config = RouterConfig {
+            enabled: true,
+            prefer_cheapest: true,
+            max_cost_per_request_usd: None,
+        };
         let selected = select_provider(&providers, 1000, 500, &config).unwrap();
         assert_eq!(selected.name, "cheap");
     }
 
     #[test]
     fn disabled_router_returns_first() {
-        let providers = vec![
-            ProviderEntry {
-                name: "a".into(),
-                provider: Arc::new(MockProvider { name: "a".into() }),
-                backend_kind: BackendKind::OpenAi,
-                model_id: "gpt-4o".into(),
-            },
-        ];
-        let config = RouterConfig { enabled: false, ..Default::default() };
+        let providers = vec![ProviderEntry {
+            name: "a".into(),
+            provider: Arc::new(MockProvider { name: "a".into() }),
+            backend_kind: BackendKind::OpenAi,
+            model_id: "gpt-4o".into(),
+        }];
+        let config = RouterConfig {
+            enabled: false,
+            ..Default::default()
+        };
         let selected = select_provider(&providers, 1000, 500, &config).unwrap();
         assert_eq!(selected.name, "a");
     }
 
     #[test]
     fn empty_providers_returns_none() {
-        let config = RouterConfig { enabled: true, ..Default::default() };
+        let config = RouterConfig {
+            enabled: true,
+            ..Default::default()
+        };
         assert!(select_provider(&[], 1000, 500, &config).is_none());
     }
 }

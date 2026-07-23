@@ -113,27 +113,62 @@ struct OaiDelta {
     content: String,
 }
 
+#[derive(Deserialize)]
+struct OaiModelsResponse {
+    data: Vec<OaiModelEntry>,
+}
+
+#[derive(Deserialize)]
+struct OaiModelEntry {
+    id: String,
+}
+
 #[async_trait]
 impl CloudProvider for OpenAiProvider {
     fn name(&self) -> &str {
         "openai"
     }
 
+    fn default_model(&self) -> &str {
+        &self.default_model
+    }
+
+    /// Live model list from the provider's `/models` endpoint, so newly
+    /// released models show up without a code change. Context length isn't
+    /// part of that response, so it's left at a conservative estimate.
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
-        Ok(vec![
-            ModelInfo {
-                id: "gpt-4o".into(),
-                name: "GPT-4o".into(),
-                context_length: 128_000,
+        let url = format!("{}/models", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Provider(format!(
+                "OpenAI API error {status}: {text}"
+            )));
+        }
+
+        let parsed: OaiModelsResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
+
+        Ok(parsed
+            .data
+            .into_iter()
+            .map(|m| ModelInfo {
+                name: m.id.clone(),
+                id: m.id,
+                context_length: 0,
                 backend: self.backend_kind.clone(),
-            },
-            ModelInfo {
-                id: "gpt-4o-mini".into(),
-                name: "GPT-4o Mini".into(),
-                context_length: 128_000,
-                backend: self.backend_kind.clone(),
-            },
-        ])
+            })
+            .collect())
     }
 
     async fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse> {

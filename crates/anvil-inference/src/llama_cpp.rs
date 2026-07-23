@@ -44,8 +44,9 @@ impl LlamaCppBackend {
             params = params.with_n_gpu_layers(gpu_layers as u32);
         }
 
-        let model = llama_cpp_2::LLamaModel::load_from_file(std::path::Path::new(model_path), params)
-            .map_err(|e| AnvilError::Inference(format!("failed to load GGUF model: {e}")))?;
+        let model =
+            llama_cpp_2::LLamaModel::load_from_file(std::path::Path::new(model_path), params)
+                .map_err(|e| AnvilError::Inference(format!("failed to load GGUF model: {e}")))?;
 
         tracing::info!("GGUF model loaded successfully from {}", model_path);
 
@@ -97,13 +98,15 @@ impl InferenceBackend for LlamaCppBackend {
         let temperature = request.temperature;
 
         let result = task::spawn_blocking(move || -> Result<CompletionResponse> {
-            let ctx_params = llama_cpp_2::LLamaContextParams::default()
-                .with_n_ctx(request.max_tokens + 4096);
+            let ctx_params =
+                llama_cpp_2::LLamaContextParams::default().with_n_ctx(request.max_tokens + 4096);
 
-            let mut ctx = model.create_context(ctx_params)
+            let mut ctx = model
+                .create_context(ctx_params)
                 .map_err(|e| AnvilError::Inference(format!("failed to create context: {e}")))?;
 
-            let tokens = model.tokenize(&prompt, true, true)
+            let tokens = model
+                .tokenize(&prompt, true, true)
                 .map_err(|e| AnvilError::Inference(format!("tokenization failed: {e}")))?;
 
             ctx.clear_kv_cache();
@@ -119,10 +122,12 @@ impl InferenceBackend for LlamaCppBackend {
             let mut n_past = tokens.len() as i32;
 
             for _ in 0..max_tokens {
-                let new_token = ctx.sample(&sampler, n_past)
+                let new_token = ctx
+                    .sample(&sampler, n_past)
                     .map_err(|e| AnvilError::Inference(format!("sampling failed: {e}")))?;
 
-                let token_text = model.token_to_str(new_token)
+                let token_text = model
+                    .token_to_str(new_token)
                     .unwrap_or_default()
                     .to_string();
 
@@ -159,13 +164,15 @@ impl InferenceBackend for LlamaCppBackend {
         let temperature = request.temperature;
 
         let result = task::spawn_blocking(move || -> Result<()> {
-            let ctx_params = llama_cpp_2::LLamaContextParams::default()
-                .with_n_ctx(request.max_tokens + 4096);
+            let ctx_params =
+                llama_cpp_2::LLamaContextParams::default().with_n_ctx(request.max_tokens + 4096);
 
-            let mut ctx = model.create_context(ctx_params)
+            let mut ctx = model
+                .create_context(ctx_params)
                 .map_err(|e| AnvilError::Inference(format!("failed to create context: {e}")))?;
 
-            let tokens = model.tokenize(&prompt, true, true)
+            let tokens = model
+                .tokenize(&prompt, true, true)
                 .map_err(|e| AnvilError::Inference(format!("tokenization failed: {e}")))?;
 
             ctx.clear_kv_cache();
@@ -179,10 +186,12 @@ impl InferenceBackend for LlamaCppBackend {
             let mut n_past = tokens.len() as i32;
 
             for _ in 0..max_tokens {
-                let new_token = ctx.sample(&sampler, n_past)
+                let new_token = ctx
+                    .sample(&sampler, n_past)
                     .map_err(|e| AnvilError::Inference(format!("sampling failed: {e}")))?;
 
-                let token_text = model.token_to_str(new_token)
+                let token_text = model
+                    .token_to_str(new_token)
                     .unwrap_or_default()
                     .to_string();
 
@@ -217,7 +226,8 @@ impl InferenceBackend for LlamaCppBackend {
         let text = text.to_string();
 
         task::spawn_blocking(move || {
-            let tokens = model.tokenize(&text, false, false)
+            let tokens = model
+                .tokenize(&text, false, false)
                 .map_err(|e| AnvilError::Inference(format!("tokenization failed: {e}")))?;
             Ok(tokens.len() as u32)
         })

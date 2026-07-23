@@ -68,6 +68,18 @@ struct AnthropicUsage {
 }
 
 #[derive(Deserialize)]
+struct AnthropicModelsResponse {
+    data: Vec<AnthropicModelEntry>,
+}
+
+#[derive(Deserialize)]
+struct AnthropicModelEntry {
+    id: String,
+    #[serde(default)]
+    display_name: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct AnthropicStreamEvent {
     #[serde(rename = "type")]
     kind: String,
@@ -89,21 +101,48 @@ impl CloudProvider for AnthropicProvider {
         "anthropic"
     }
 
+    fn default_model(&self) -> &str {
+        &self.default_model
+    }
+
+    /// Live model list from the provider's `/models` endpoint, so newly
+    /// released models show up without a code change. Context length isn't
+    /// part of that response; Anthropic models are consistently 200k today,
+    /// so that's used as the estimate rather than a per-model hardcoded value.
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
-        Ok(vec![
-            ModelInfo {
-                id: "claude-sonnet-5".into(),
-                name: "Claude Sonnet 5".into(),
+        let url = format!("{}/models", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .send()
+            .await
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Provider(format!(
+                "Anthropic API error {status}: {text}"
+            )));
+        }
+
+        let parsed: AnthropicModelsResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
+
+        Ok(parsed
+            .data
+            .into_iter()
+            .map(|m| ModelInfo {
+                name: m.display_name.unwrap_or_else(|| m.id.clone()),
+                id: m.id,
                 context_length: 200_000,
                 backend: BackendKind::Anthropic,
-            },
-            ModelInfo {
-                id: "claude-haiku-4-5-20251001".into(),
-                name: "Claude Haiku 4.5".into(),
-                context_length: 200_000,
-                backend: BackendKind::Anthropic,
-            },
-        ])
+            })
+            .collect())
     }
 
     async fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse> {

@@ -44,16 +44,22 @@ on CPU. The selected device is reported in the daemon logs at startup.
 |-----|------|---------|-------------|
 | `active` | string | `""` | Active cloud provider (empty = local only) |
 
+> Cloud provider `model` fields default to an empty string rather than a
+> specific model id — model names change too often for a hardcoded default to
+> stay current. Leaving one unset raises a clear config error naming which
+> key to set (with a link to that provider's current model list) instead of
+> silently picking a possibly-stale model.
+
 ### `[providers.openai]`
-| `model` | string | `""` | Model ID (e.g. `gpt-4o`) |
+| `model` | string | `""` | Model ID (e.g. `gpt-4o`) — required if `active = "openai"` |
 | `api_key_entry` | string | `"openai_api_key"` | OS keychain entry name |
 
 ### `[providers.anthropic]`
-| `model` | string | `"claude-sonnet-5"` | Model ID |
+| `model` | string | `""` | Model ID (e.g. `claude-sonnet-5`) — required if `active = "anthropic"` |
 | `api_key_entry` | string | `"anthropic_api_key"` | OS keychain entry name |
 
 ### `[providers.openrouter]`
-| `model` | string | `"deepseek/deepseek-coder"` | Model ID |
+| `model` | string | `""` | Model ID (e.g. `deepseek/deepseek-coder`) |
 | `api_key_entry` | string | `"openrouter_api_key"` | OS keychain entry name |
 
 ### `[providers.azure]`
