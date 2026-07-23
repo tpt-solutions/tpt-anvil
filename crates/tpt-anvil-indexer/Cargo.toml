@@ -42,7 +42,7 @@ tree-sitter-c-sharp = "0.23"
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 # BM25 / full-text search
-tantivy = "0.22"
+tantivy = "0.26"
 
 # File traversal
 walkdir = "2"
