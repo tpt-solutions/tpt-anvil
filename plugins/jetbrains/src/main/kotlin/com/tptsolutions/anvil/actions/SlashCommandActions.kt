@@ -3,6 +3,8 @@ package com.tptsolutions.anvil.actions
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.fileTypes.FileTypeManager
+import com.intellij.openapi.fileTypes.LanguageFileType
 import com.intellij.openapi.wm.ToolWindowManager
 import com.tptsolutions.anvil.CodeContext
 import com.tptsolutions.anvil.TextSelection
@@ -16,10 +18,9 @@ abstract class BaseAnvilAction(private val command: String) : AnAction() {
         val sel = editor.selectionModel
         val hasSelection = sel.hasSelection()
         val content = if (hasSelection) sel.selectedText ?: "" else editor.document.text
-        val language = editor.project?.let { 
-            com.intellij.lang.LanguageUtil.getLanguageTypeByExtension(
-                editor.virtualFile?.extension ?: ""
-            )?.id
+        val language = editor.virtualFile?.extension?.let { ext ->
+            val fileType = FileTypeManager.getInstance().getFileTypeByExtension(ext)
+            (fileType as? LanguageFileType)?.language?.id
         } ?: ""
 
         val ctx = CodeContext(
