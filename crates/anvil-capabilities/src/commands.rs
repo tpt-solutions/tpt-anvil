@@ -163,6 +163,22 @@ impl CommandHandler {
         self.recent_models.lock().await.list().to_vec()
     }
 
+    /// Access to cloud providers — used by the benchmark runner to find a
+    /// specific provider by name.
+    pub fn cloud_providers(&self) -> &[ProviderEntry] {
+        &self.providers
+    }
+
+    /// The single active cloud provider (when router is disabled).
+    pub fn active_cloud_provider(&self) -> Option<&Arc<dyn CloudProvider>> {
+        self.cloud_provider.as_ref()
+    }
+
+    /// The handler configuration (verify, vault, router settings, project root).
+    pub fn handler_config(&self) -> &HandlerConfig {
+        &self.config
+    }
+
     /// Pick which cloud provider to fall back to for this request: the
     /// cost-based router when enabled and providers are available, otherwise
     /// the single configured `cloud_provider` (pre-Router behavior).

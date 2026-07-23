@@ -456,6 +456,58 @@ async fn handle_rpc<R, W>(
                 JsonRpcResponse::ok(id, response_value)
             }
 
+            "benchmark.run" => {
+                let target = req
+                    .params
+                    .get("target")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let (provider_name, model_id) = match target.split_once('/') {
+                    Some((p, m)) => (p, m),
+                    None => {
+                        send_line(
+                            &mut writer,
+                            &JsonRpcResponse::err(id, -32602, "target must be `provider/model`"),
+                        )
+                        .await;
+                        continue;
+                    }
+                };
+
+                let handler_clone = Arc::clone(&handler);
+                let provider_name = provider_name.to_string();
+                let model_id = model_id.to_string();
+
+                let (result_tx, mut result_rx) =
+                    mpsc::channel::<anyhow::Result<serde_json::Value>>(1);
+
+                tokio::spawn(async move {
+                    let result = run_benchmark_rpc(&handler_clone, &provider_name, &model_id).await;
+                    let _ = result_tx.send(result).await;
+                });
+
+                match result_rx.recv().await {
+                    Some(Ok(val)) => JsonRpcResponse::ok(id, val),
+                    Some(Err(e)) => {
+                        JsonRpcResponse::err(id, -32000, format!("benchmark failed: {e}"))
+                    }
+                    None => JsonRpcResponse::err(id, -32000, "benchmark channel closed"),
+                }
+            }
+
+            "benchmark.report" => {
+                let targets: Vec<String> = req
+                    .params
+                    .get("targets")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default();
+                let result = show_benchmark_report_rpc(&targets);
+                match result {
+                    Ok(val) => JsonRpcResponse::ok(id, val),
+                    Err(e) => JsonRpcResponse::err(id, -32000, format!("report failed: {e}")),
+                }
+            }
+
             other => JsonRpcResponse::err(id, -32601, format!("method not found: {other}")),
         };
 
@@ -467,4 +519,211 @@ async fn send_line<W: AsyncWriteExt + Unpin>(writer: &mut W, value: &impl serde:
     if let Ok(line) = serde_json::to_string(value) {
         let _ = writer.write_all(format!("{line}\n").as_bytes()).await;
     }
+}
+
+async fn run_benchmark_rpc(
+    handler: &CommandHandler,
+    provider_name: &str,
+    model_id: &str,
+) -> anyhow::Result<serde_json::Value> {
+    use anvil_capabilities::benchmark::load_builtin_tasks;
+    use anvil_capabilities::benchmark::runner::{core_score, grade_task};
+    use anvil_capabilities::benchmark::scorecard::ModelScorecard;
+    use anvil_capabilities::benchmark::store::BenchmarkStore;
+    use tpt_anvil_providers::types::{ChatMessage, CompletionRequest, Role};
+
+    let tasks = load_builtin_tasks();
+    if tasks.is_empty() {
+        return Err(anyhow::anyhow!("no benchmark tasks found"));
+    }
+
+    let provider: std::sync::Arc<dyn tpt_anvil_providers::provider::CloudProvider> =
+        if let Some(entry) = handler
+            .cloud_providers()
+            .iter()
+            .find(|e| e.name == provider_name)
+        {
+            entry.provider.clone()
+        } else if let Some(active) = handler.active_cloud_provider() {
+            active.clone()
+        } else {
+            return Err(anyhow::anyhow!(
+                "no provider named '{provider_name}' available"
+            ));
+        };
+
+    let hcfg = handler.handler_config();
+    let verify_config = hcfg.verify.clone();
+    let proj = hcfg.project_root.clone();
+
+    let mut results = Vec::new();
+    let mut total_cost: f64 = 0.0;
+
+    for task in &tasks {
+        let request = CompletionRequest {
+            messages: vec![ChatMessage {
+                role: Role::User,
+                content: task.prompt.clone(),
+            }],
+            model: Some(model_id.to_string()),
+            max_tokens: 2048,
+            temperature: 0.2,
+            stream: false,
+        };
+
+        let start = std::time::Instant::now();
+        match provider.complete(&request).await {
+            Ok(response) => {
+                let task_result = grade_task(task, &response.content, &proj, &verify_config).await;
+                let cost = response.usage.as_ref().and_then(|u| {
+                    let backend = match provider_name {
+                        "openai" => tpt_anvil_providers::types::BackendKind::OpenAi,
+                        "anthropic" => tpt_anvil_providers::types::BackendKind::Anthropic,
+                        "openrouter" => tpt_anvil_providers::types::BackendKind::OpenRouter,
+                        "azure" => tpt_anvil_providers::types::BackendKind::AzureOpenAi,
+                        _ => tpt_anvil_providers::types::BackendKind::OpenAiCompatible,
+                    };
+                    tpt_anvil_providers::cost::estimate_cost(&backend, model_id, u)
+                });
+                if let Some(c) = cost {
+                    total_cost += c;
+                }
+                results.push(task_result);
+            }
+            Err(e) => {
+                results.push(anvil_capabilities::benchmark::scorecard::TaskRunResult {
+                    task_id: task.id.clone(),
+                    task_kind: task.kind,
+                    passed: false,
+                    latency_ms: start.elapsed().as_millis() as u64,
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    cost_usd: None,
+                    output: None,
+                    errors: vec![e.to_string()],
+                });
+            }
+        }
+    }
+
+    let score = core_score(&results);
+    let task_ids: Vec<String> = tasks.iter().map(|t| t.id.clone()).collect();
+    let now = chrono_now();
+
+    let scorecard = ModelScorecard {
+        provider: provider_name.to_string(),
+        model_id: model_id.to_string(),
+        last_run_at: now,
+        core_task_ids_run: task_ids,
+        core_results: results,
+        adaptive_results: vec![],
+        core_score: score,
+        adaptive_score: None,
+        total_cost_usd: total_cost,
+    };
+
+    let store_path = BenchmarkStore::default_path().unwrap_or_default();
+    let mut store = BenchmarkStore::load(&store_path);
+    store.record(scorecard.clone());
+    let _ = store.save(&store_path);
+
+    Ok(serde_json::json!({
+        "provider": scorecard.provider,
+        "model_id": scorecard.model_id,
+        "core_score": scorecard.core_score,
+        "total_cost_usd": scorecard.total_cost_usd,
+        "tasks_run": scorecard.core_task_ids_run.len(),
+        "tasks_passed": scorecard.core_results.iter().filter(|r| r.passed).count(),
+        "last_run_at": scorecard.last_run_at,
+    }))
+}
+
+fn show_benchmark_report_rpc(targets: &[String]) -> anyhow::Result<serde_json::Value> {
+    use anvil_capabilities::benchmark::comparison::compare;
+    use anvil_capabilities::benchmark::store::BenchmarkStore;
+
+    let store_path = BenchmarkStore::default_path().unwrap_or_default();
+    let store = BenchmarkStore::load(&store_path);
+
+    if store.entries().is_empty() {
+        return Ok(serde_json::json!({
+            "entries": [],
+            "message": "no scorecards stored yet"
+        }));
+    }
+
+    if targets.len() == 2 {
+        let (lp, lm) = targets[0]
+            .split_once('/')
+            .ok_or_else(|| anyhow::anyhow!("target must be `provider/model`"))?;
+        let (rp, rm) = targets[1]
+            .split_once('/')
+            .ok_or_else(|| anyhow::anyhow!("target must be `provider/model`"))?;
+
+        let left = store
+            .find(lp, lm)
+            .ok_or_else(|| anyhow::anyhow!("no scorecard for {}", targets[0]))?;
+        let right = store
+            .find(rp, rm)
+            .ok_or_else(|| anyhow::anyhow!("no scorecard for {}", targets[1]))?;
+
+        let cmp = compare(left, right);
+
+        Ok(serde_json::json!({
+            "left": cmp.left_label,
+            "right": cmp.right_label,
+            "shared_tasks": cmp.shared_task_ids.len(),
+            "left_score": cmp.left_shared_score,
+            "right_score": cmp.right_shared_score,
+            "left_only_tasks": cmp.left_only_task_ids,
+            "right_only_tasks": cmp.right_only_task_ids,
+        }))
+    } else {
+        let entries: Vec<serde_json::Value> = store
+            .entries()
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "provider": e.provider,
+                    "model_id": e.model_id,
+                    "core_score": e.core_score,
+                    "adaptive_score": e.adaptive_score,
+                    "total_cost_usd": e.total_cost_usd,
+                    "last_run_at": e.last_run_at,
+                    "tasks_run": e.core_task_ids_run.len(),
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({ "entries": entries }))
+    }
+}
+
+pub(crate) fn chrono_now() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let days = now / 86400;
+    let secs = now % 86400;
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
+    let y = 1970 + (days / 1461) * 4 + ((days % 1461) * 4 / 1461);
+    let rem = days - ((y - 1970) * 365 + (y - 1970) / 4);
+    let doy = rem as u32;
+    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut m_idx = 0;
+    let mut d = doy;
+    for (i, &md) in month_days.iter().enumerate() {
+        if d < md {
+            m_idx = i;
+            break;
+        }
+        d -= md;
+        if i == 11 {
+            m_idx = 11;
+        }
+    }
+    format!("{y:04}-{:02}-{:02}T{h:02}:{m:02}:{s:02}Z", m_idx + 1, d + 1)
 }

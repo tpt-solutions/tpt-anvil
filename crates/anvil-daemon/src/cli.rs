@@ -466,20 +466,12 @@ pub async fn handle_benchmark(cmd: BenchmarkCommands, project_root: Option<&str>
             target,
             no_adaptive,
             project,
-        } => {
-            run_benchmark(&target, no_adaptive, project.as_deref().or(project_root)).await
-        }
-        BenchmarkCommands::Report { compare } => {
-            show_benchmark_report(&compare).await
-        }
+        } => run_benchmark(&target, no_adaptive, project.as_deref().or(project_root)).await,
+        BenchmarkCommands::Report { compare } => show_benchmark_report(&compare).await,
     }
 }
 
-async fn run_benchmark(
-    target: &str,
-    _no_adaptive: bool,
-    project_root: Option<&str>,
-) -> Result<()> {
+async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&str>) -> Result<()> {
     use anvil_capabilities::benchmark::load_builtin_tasks;
     use anvil_capabilities::benchmark::runner::{core_score, grade_task};
     use anvil_capabilities::benchmark::scorecard::ModelScorecard;
@@ -488,11 +480,11 @@ async fn run_benchmark(
     use tpt_anvil_providers::registry::ProviderRegistry;
     use tpt_anvil_providers::types::{ChatMessage, CompletionRequest, Role};
 
-    let (provider_name, model_id) = target
-        .split_once('/')
-        .ok_or_else(|| {
-            anyhow::anyhow!("target must be in the form `provider/model` (e.g. `ollama/deepseek-coder:6.7b`)")
-        })?;
+    let (provider_name, model_id) = target.split_once('/').ok_or_else(|| {
+        anyhow::anyhow!(
+            "target must be in the form `provider/model` (e.g. `ollama/deepseek-coder:6.7b`)"
+        )
+    })?;
 
     // Load config and build the provider for the given name
     let cfg = anvil_config::loader::ConfigLoader::load(project_root.map(std::path::Path::new))
@@ -520,11 +512,9 @@ async fn run_benchmark(
         ));
     }
 
-    let proj = std::path::PathBuf::from(
-        project_root
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default()),
-    );
+    let proj = project_root
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
     let verify_config = VerifyConfig {
         enabled: cfg.verify.enabled,
@@ -534,7 +524,10 @@ async fn run_benchmark(
         max_retries: cfg.verify.max_retries,
     };
 
-    println!("Running {} benchmark tasks against {target}...\n", tasks.len());
+    println!(
+        "Running {} benchmark tasks against {target}...\n",
+        tasks.len()
+    );
 
     let mut results = Vec::new();
     let mut total_cost: f64 = 0.0;
@@ -559,21 +552,17 @@ async fn run_benchmark(
 
         match output {
             Ok(response) => {
-                let task_result =
-                    grade_task(task, &response.content, &proj, &verify_config).await;
-                let cost = response
-                    .usage
-                    .as_ref()
-                    .and_then(|u| {
-                        let backend = match provider_name {
-                            "openai" => tpt_anvil_providers::types::BackendKind::OpenAi,
-                            "anthropic" => tpt_anvil_providers::types::BackendKind::Anthropic,
-                            "openrouter" => tpt_anvil_providers::types::BackendKind::OpenRouter,
-                            "azure" => tpt_anvil_providers::types::BackendKind::AzureOpenAi,
-                            _ => tpt_anvil_providers::types::BackendKind::OpenAiCompatible,
-                        };
-                        tpt_anvil_providers::cost::estimate_cost(&backend, model_id, &u)
-                    });
+                let task_result = grade_task(task, &response.content, &proj, &verify_config).await;
+                let cost = response.usage.as_ref().and_then(|u| {
+                    let backend = match provider_name {
+                        "openai" => tpt_anvil_providers::types::BackendKind::OpenAi,
+                        "anthropic" => tpt_anvil_providers::types::BackendKind::Anthropic,
+                        "openrouter" => tpt_anvil_providers::types::BackendKind::OpenRouter,
+                        "azure" => tpt_anvil_providers::types::BackendKind::AzureOpenAi,
+                        _ => tpt_anvil_providers::types::BackendKind::OpenAiCompatible,
+                    };
+                    tpt_anvil_providers::cost::estimate_cost(&backend, model_id, u)
+                });
                 if let Some(c) = cost {
                     total_cost += c;
                 }
@@ -626,7 +615,10 @@ async fn run_benchmark(
         .save(&store_path)
         .map_err(|e| anyhow::anyhow!("failed to save benchmark store: {e}"))?;
 
-    println!("\nBenchmark complete: {:.0}% ({target}) at {now}", score * 100.0);
+    println!(
+        "\nBenchmark complete: {:.0}% ({target}) at {now}",
+        score * 100.0
+    );
     if total_cost > 0.0 {
         println!("Estimated cost: ${total_cost:.4}");
     }
@@ -669,43 +661,42 @@ async fn show_benchmark_report(targets: &[String]) -> Result<()> {
                 };
                 println!(
                     "{:<15} {:<25} {:>8.0}% {:>8} {:>10}",
-                    entry.provider, entry.model_id, entry.core_score * 100.0, adaptive, cost
+                    entry.provider,
+                    entry.model_id,
+                    entry.core_score * 100.0,
+                    adaptive,
+                    cost
                 );
             }
-            println!("\nRun `anvil benchmark report <provider1/model1> <provider2/model2>` to compare.");
+            println!(
+                "\nRun `anvil benchmark report <provider1/model1> <provider2/model2>` to compare."
+            );
         }
         2 => {
             let (left_provider, left_model) = parse_target(&targets[0])?;
             let (right_provider, right_model) = parse_target(&targets[1])?;
 
-            let left = store.find(&left_provider, &left_model).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "no scorecard found for {}",
-                    &targets[0]
-                )
-            })?;
-            let right = store.find(&right_provider, &right_model).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "no scorecard found for {}",
-                    &targets[1]
-                )
-            })?;
+            let left = store
+                .find(&left_provider, &left_model)
+                .ok_or_else(|| anyhow::anyhow!("no scorecard found for {}", targets[0]))?;
+            let right = store
+                .find(&right_provider, &right_model)
+                .ok_or_else(|| anyhow::anyhow!("no scorecard found for {}", targets[1]))?;
 
             let cmp = compare(left, right);
 
             println!("Benchmark Comparison\n");
-            println!(
-                "  {:<25} vs {:<25}",
-                cmp.left_label, cmp.right_label
-            );
+            println!("  {:<25} vs {:<25}", cmp.left_label, cmp.right_label);
             println!("  Shared tasks: {}\n", cmp.shared_task_ids.len());
             println!(
                 "  {:<25} {:.0}%",
-                cmp.left_label, cmp.left_shared_score * 100.0
+                cmp.left_label,
+                cmp.left_shared_score * 100.0
             );
             println!(
                 "  {:<25} {:.0}%",
-                cmp.right_label, cmp.right_shared_score * 100.0
+                cmp.right_label,
+                cmp.right_shared_score * 100.0
             );
 
             if !cmp.left_only_task_ids.is_empty() {
@@ -741,35 +732,7 @@ fn parse_target(target: &str) -> Result<(String, String)> {
 }
 
 fn chrono_now() -> String {
-    // Simple ISO-8601 timestamp without pulling in chrono
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    // Approximate — good enough for scorecard timestamps
-    let days = now / 86400;
-    let secs = now % 86400;
-    let h = secs / 3600;
-    let m = (secs % 3600) / 60;
-    let s = secs % 60;
-    // Days to y/m/d (simplified, no leap-year math needed for display)
-    let y = 1970 + (days / 1461) * 4 + ((days % 1461) * 4 / 1461);
-    let rem = days - ((y - 1970) * 365 + (y - 1970) / 4);
-    let doy = rem as u32;
-    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let mut m_idx = 0;
-    let mut d = doy;
-    for (i, &md) in month_days.iter().enumerate() {
-        if d < md {
-            m_idx = i;
-            break;
-        }
-        d -= md;
-        if i == 11 {
-            m_idx = 11;
-        }
-    }
-    format!("{y:04}-{:02}-{:02}T{h:02}:{m:02}:{s:02}Z", m_idx + 1, d + 1)
+    crate::server::chrono_now()
 }
 
 /// Show cost/usage summary from the recent models tracker and router estimates.

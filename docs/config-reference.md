@@ -155,3 +155,42 @@ Each entry in `custom_patterns` has the following shape:
 |-----|------|---------|-------------|
 | `theme` | string | `"system"` | Color theme: `system`, `light`, `dark` |
 | `font_size` | int | `14` | Chat panel font size |
+
+## `[benchmark]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Enable benchmark tracking |
+| `core_suite_path` | string | — | Override path to core task TOML directory (default uses embedded suite) |
+| `rotation_period_days` | u32 | `180` | Days before a core task retires from the active window |
+| `stagger_interval_days` | u32 | `30` | Days between new task introductions |
+| `max_stored` | u32 | `30` | Maximum stored scorecards (LRU eviction) |
+
+### `[benchmark.adaptive]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Enable adaptive task generation from prior failures |
+| `evaluator_provider` | string | — | Provider name for the evaluator model |
+| `evaluator_model` | string | — | Model id for the evaluator |
+| `max_tasks_per_run` | u32 | `5` | Maximum adaptive tasks generated per run |
+
+### CLI usage
+
+```sh
+# Run the core benchmark suite against a model
+anvil benchmark run ollama/deepseek-coder:6.7b
+
+# Show stored scorecards
+anvil benchmark report
+
+# Compare two models
+anvil benchmark report ollama/deepseek-coder:6.7b openai/gpt-4o
+```
+
+### RPC methods
+
+| Method | Params | Description |
+|--------|--------|-------------|
+| `benchmark.run` | `{ "target": "provider/model" }` | Run the core benchmark suite |
+| `benchmark.report` | `{ "targets": ["p/m1", "p/m2"] }` (optional) | Show all scorecards or compare two |
