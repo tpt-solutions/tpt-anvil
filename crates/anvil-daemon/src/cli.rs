@@ -464,20 +464,12 @@ pub async fn handle_benchmark(cmd: BenchmarkCommands, project_root: Option<&str>
             target,
             no_adaptive,
             project,
-        } => {
-            run_benchmark(&target, no_adaptive, project.as_deref().or(project_root)).await
-        }
-        BenchmarkCommands::Report { compare } => {
-            show_benchmark_report(&compare).await
-        }
+        } => run_benchmark(&target, no_adaptive, project.as_deref().or(project_root)).await,
+        BenchmarkCommands::Report { compare } => show_benchmark_report(&compare).await,
     }
 }
 
-async fn run_benchmark(
-    target: &str,
-    _no_adaptive: bool,
-    project_root: Option<&str>,
-) -> Result<()> {
+async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&str>) -> Result<()> {
     use anvil_capabilities::benchmark::load_builtin_tasks;
     use anvil_capabilities::benchmark::runner::{core_score, grade_task};
     use anvil_capabilities::benchmark::scorecard::ModelScorecard;
@@ -486,16 +478,16 @@ async fn run_benchmark(
     use tpt_anvil_providers::registry::ProviderRegistry;
     use tpt_anvil_providers::types::{ChatMessage, CompletionRequest, Role};
 
-    let (provider_name, model_id) = target
-        .split_once('/')
-        .ok_or_else(|| {
-            anyhow::anyhow!("target must be in the form `provider/model` (e.g. `ollama/deepseek-coder:6.7b`)")
-        })?;
+    let (provider_name, model_id) = target.split_once('/').ok_or_else(|| {
+        anyhow::anyhow!(
+            "target must be in the form `provider/model` (e.g. `ollama/deepseek-coder:6.7b`)"
+        )
+    })?;
 
     // Load config and build the provider for the given name
-    let cfg = anvil_config::loader::ConfigLoader::load()
+    let cfg = anvil_config::loader::ConfigLoader::load(project_root.map(std::path::Path::new))
         .map_err(|e| anyhow::anyhow!("failed to load config: {e}"))?;
-    let provider_cfg = to_provider_config(&cfg);
+    let provider_cfg = crate::server::to_provider_config(&cfg);
     let registry = ProviderRegistry::from_config(&provider_cfg)
         .map_err(|e| anyhow::anyhow!("failed to build provider registry: {e}"))?;
 
@@ -518,20 +510,22 @@ async fn run_benchmark(
         ));
     }
 
-    let proj = std::path::PathBuf::from(
-        project_root
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default()),
-    );
+    let proj = project_root
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
     let verify_config = VerifyConfig {
         enabled: cfg.verify.enabled,
         run_tests: cfg.verify.run_tests,
         run_linter: cfg.verify.run_linter,
         timeout_seconds: cfg.verify.timeout_seconds,
+        max_retries: cfg.verify.max_retries,
     };
 
-    println!("Running {} benchmark tasks against {target}...\n", tasks.len());
+    println!(
+        "Running {} benchmark tasks against {target}...\n",
+        tasks.len()
+    );
 
     let mut results = Vec::new();
     let mut total_cost: f64 = 0.0;
@@ -556,21 +550,17 @@ async fn run_benchmark(
 
         match output {
             Ok(response) => {
-                let task_result =
-                    grade_task(task, &response.content, &proj, &verify_config).await;
-                let cost = response
-                    .usage
-                    .as_ref()
-                    .and_then(|u| {
-                        let backend = match provider_name {
-                            "openai" => tpt_anvil_providers::types::BackendKind::OpenAi,
-                            "anthropic" => tpt_anvil_providers::types::BackendKind::Anthropic,
-                            "openrouter" => tpt_anvil_providers::types::BackendKind::OpenRouter,
-                            "azure" => tpt_anvil_providers::types::BackendKind::AzureOpenAi,
-                            _ => tpt_anvil_providers::types::BackendKind::OpenAiCompatible,
-                        };
-                        tpt_anvil_providers::cost::estimate_cost(&backend, model_id, &u)
-                    });
+                let task_result = grade_task(task, &response.content, &proj, &verify_config).await;
+                let cost = response.usage.as_ref().and_then(|u| {
+                    let backend = match provider_name {
+                        "openai" => tpt_anvil_providers::types::BackendKind::OpenAi,
+                        "anthropic" => tpt_anvil_providers::types::BackendKind::Anthropic,
+                        "openrouter" => tpt_anvil_providers::types::BackendKind::OpenRouter,
+                        "azure" => tpt_anvil_providers::types::BackendKind::AzureOpenAi,
+                        _ => tpt_anvil_providers::types::BackendKind::OpenAiCompatible,
+                    };
+                    tpt_anvil_providers::cost::estimate_cost(&backend, model_id, u)
+                });
                 if let Some(c) = cost {
                     total_cost += c;
                 }
@@ -623,7 +613,10 @@ async fn run_benchmark(
         .save(&store_path)
         .map_err(|e| anyhow::anyhow!("failed to save benchmark store: {e}"))?;
 
-    println!("\nBenchmark complete: {score:.0%} ({target}) at {now}");
+    println!(
+        "\nBenchmark complete: {:.0}% ({target}) at {now}",
+        score * 100.0
+    );
     if total_cost > 0.0 {
         println!("Estimated cost: ${total_cost:.4}");
     }
@@ -633,7 +626,7 @@ async fn run_benchmark(
 }
 
 async fn show_benchmark_report(compare: &[String]) -> Result<()> {
-    use anvil_capabilities::benchmark::comparison::compare;
+    use anvil_capabilities::benchmark::comparison::compare as compare_scorecards;
     use anvil_capabilities::benchmark::store::BenchmarkStore;
 
     let store_path = BenchmarkStore::default_path().unwrap_or_default();
@@ -657,52 +650,48 @@ async fn show_benchmark_report(compare: &[String]) -> Result<()> {
             for entry in store.entries() {
                 let adaptive = entry
                     .adaptive_score
-                    .map(|s| format!("{:.0%}", s))
+                    .map(|s| format!("{:.0}%", s * 100.0))
                     .unwrap_or_else(|| "-".into());
                 let cost = if entry.total_cost_usd > 0.0 {
                     format!("${:.4}", entry.total_cost_usd)
                 } else {
                     "-".into()
                 };
+                let core = format!("{:.0}%", entry.core_score * 100.0);
                 println!(
-                    "{:<15} {:<25} {:>8.0%} {:>8} {:>10}",
-                    entry.provider, entry.model_id, entry.core_score, adaptive, cost
+                    "{:<15} {:<25} {:>8} {:>8} {:>10}",
+                    entry.provider, entry.model_id, core, adaptive, cost
                 );
             }
-            println!("\nRun `anvil benchmark report <provider1/model1> <provider2/model2>` to compare.");
+            println!(
+                "\nRun `anvil benchmark report <provider1/model1> <provider2/model2>` to compare."
+            );
         }
         2 => {
             let (left_provider, left_model) = parse_target(&compare[0])?;
             let (right_provider, right_model) = parse_target(&compare[1])?;
 
-            let left = store.find(&left_provider, &left_model).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "no scorecard found for {}",
-                    &compare[0]
-                )
-            })?;
-            let right = store.find(&right_provider, &right_model).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "no scorecard found for {}",
-                    &compare[1]
-                )
-            })?;
+            let left = store
+                .find(&left_provider, &left_model)
+                .ok_or_else(|| anyhow::anyhow!("no scorecard found for {}", &compare[0]))?;
+            let right = store
+                .find(&right_provider, &right_model)
+                .ok_or_else(|| anyhow::anyhow!("no scorecard found for {}", &compare[1]))?;
 
-            let cmp = compare(left, right);
+            let cmp = compare_scorecards(left, right);
 
             println!("Benchmark Comparison\n");
-            println!(
-                "  {:<25} vs {:<25}",
-                cmp.left_label, cmp.right_label
-            );
+            println!("  {:<25} vs {:<25}", cmp.left_label, cmp.right_label);
             println!("  Shared tasks: {}\n", cmp.shared_task_ids.len());
             println!(
-                "  {:<25} {:.0%}",
-                cmp.left_label, cmp.left_shared_score
+                "  {:<25} {:.0}%",
+                cmp.left_label,
+                cmp.left_shared_score * 100.0
             );
             println!(
-                "  {:<25} {:.0%}",
-                cmp.right_label, cmp.right_shared_score
+                "  {:<25} {:.0}%",
+                cmp.right_label,
+                cmp.right_shared_score * 100.0
             );
 
             if !cmp.left_only_task_ids.is_empty() {
