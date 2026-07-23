@@ -84,6 +84,49 @@ dependency-free feature-hashing embedder is used so vector search works fully
 offline; set `embedding_model` to a neural model served by Ollama (e.g.
 `nomic-embed-text`) for higher-quality semantic search.
 
+## `[vault]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable the secrets vault (intercepts API keys and tokens in prompts) |
+| `redact_local` | bool | `false` | Redact secrets even when running on a local backend |
+| `custom_patterns` | array | `[]` | Additional patterns to detect and redact |
+
+Each entry in `custom_patterns` has the following shape:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `name` | string | Human-readable name for the pattern |
+| `pattern` | string | Regular expression to match |
+| `replacement` | string | Replacement string (e.g. `"[REDACTED]"`) |
+
+## `[smart_context]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable smart context chunking for large files |
+| `file_size_threshold_bytes` | usize | `2048` | Files larger than this are chunked before embedding |
+| `chunk_size_threshold_bytes` | usize | `1024` | Maximum chunk size in bytes when splitting files |
+
+## `[router]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Enable automatic routing between local and cloud providers |
+| `prefer_cheapest` | bool | `true` | Route to the cheapest provider that meets quality requirements |
+| `max_cost_per_request_usd` | f64 | — | Optional cap on cost per request in USD |
+| `pinned` | string | — | Optional provider name to pin all requests to |
+
+## `[verify]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable automatic verification after code generation |
+| `run_tests` | bool | `false` | Run the project test suite after applying changes |
+| `run_linter` | bool | `true` | Run the project linter after applying changes |
+| `timeout_seconds` | u64 | `60` | Timeout for verification commands |
+| `max_retries` | u32 | `1` | Number of times to retry verification on failure |
+
 ## `[ui]`
 
 | Key | Type | Default | Description |

@@ -9,10 +9,10 @@ repository.workspace = true
 readme = "README.md"
 keywords = ["code-search", "tree-sitter", "indexing", "bm25", "embeddings"]
 categories = ["development-tools", "text-processing"]
+documentation = "https://docs.rs/tpt-anvil-indexer"
+homepage = "https://github.com/tpt-solutions/tpt-anvil"
 
 [dependencies]
-anvil-core = { path = "../anvil-core" }
-anvil-config = { path = "../anvil-config" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

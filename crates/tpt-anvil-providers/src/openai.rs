@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use anvil_core::{
-    types::{
-        BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Role, StreamChunk,
-        TokenUsage,
-    },
-    AnvilError, Result,
+use crate::types::{
+    BackendKind, CompletionRequest, CompletionResponse, ModelInfo, ProviderError, Result, Role,
+    StreamChunk, TokenUsage,
 };
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -18,6 +15,7 @@ use crate::{
     provider::CloudProvider,
     retry::{with_retry, RetryConfig},
 };
+use std::time::Duration;
 
 pub struct OpenAiProvider {
     api_key: String,
@@ -28,7 +26,7 @@ pub struct OpenAiProvider {
 }
 
 impl OpenAiProvider {
-    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::with_base_url(
             api_key,
             model,
@@ -42,14 +40,20 @@ impl OpenAiProvider {
         model: impl Into<String>,
         base_url: impl Into<String>,
         backend_kind: BackendKind,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(120))
+            .build()
+            .map_err(|e| ProviderError::Provider(format!("failed to create HTTP client: {e}")))?;
+
+        Ok(Self {
             api_key: api_key.into(),
             base_url: base_url.into().trim_end_matches('/').to_string(),
             default_model: model.into(),
-            client: Client::new(),
+            client,
             backend_kind,
-        }
+        })
     }
 }
 
@@ -165,12 +169,12 @@ impl CloudProvider for OpenAiProvider {
                 .json(&body)
                 .send()
                 .await
-                .map_err(|e| AnvilError::Provider(e.to_string()))?;
+                .map_err(|e| ProviderError::Provider(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
                 let text = resp.text().await.unwrap_or_default();
-                return Err(AnvilError::Provider(format!(
+                return Err(ProviderError::Provider(format!(
                     "OpenAI API error {status}: {text}"
                 )));
             }
@@ -178,7 +182,7 @@ impl CloudProvider for OpenAiProvider {
             let parsed: OaiResponse = resp
                 .json()
                 .await
-                .map_err(|e| AnvilError::Provider(e.to_string()))?;
+                .map_err(|e| ProviderError::Provider(e.to_string()))?;
 
             Ok(CompletionResponse {
                 content: parsed
@@ -225,11 +229,11 @@ impl CloudProvider for OpenAiProvider {
                 .json(&body)
                 .send()
                 .await
-                .map_err(|e| AnvilError::Provider(e.to_string()))?;
+                .map_err(|e| ProviderError::Provider(e.to_string()))?;
             if !resp.status().is_success() {
                 let status = resp.status();
                 let text = resp.text().await.unwrap_or_default();
-                return Err(AnvilError::Provider(format!(
+                return Err(ProviderError::Provider(format!(
                     "OpenAI API error {status}: {text}"
                 )));
             }
@@ -238,7 +242,7 @@ impl CloudProvider for OpenAiProvider {
         .await?;
 
         while let Some(chunk) = stream.next().await {
-            let bytes = chunk.map_err(|e| AnvilError::Provider(e.to_string()))?;
+            let bytes = chunk.map_err(|e| ProviderError::Provider(e.to_string()))?;
             let text = std::str::from_utf8(&bytes).unwrap_or("").trim().to_string();
 
             for line in text.lines() {

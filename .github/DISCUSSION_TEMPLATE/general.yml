@@ -1,0 +1,17 @@
+---
+name: Question
+about: Ask a question about TPT Anvil
+title: "[Q&A] "
+labels: question
+---
+
+**Describe your question**
+A clear and concise description of what you want to know.
+
+**Context**
+- Operating system:
+- IDE: VS Code / JetBrains
+- Anvil version:
+
+**Screenshots**
+If applicable, add screenshots to help explain your question.

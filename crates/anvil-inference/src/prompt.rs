@@ -89,10 +89,18 @@ fn format_alpaca(messages: &[ChatMessage]) -> String {
     }
 }
 
+/// Build a single prompt string from a `CompletionRequest`, auto-detecting
+/// the appropriate chat template from the model name.
+pub fn apply_chat_template(request: &CompletionRequest) -> String {
+    let model_id = request.model.as_deref().unwrap_or("deepseek-coder:6.7b");
+    let template = PromptTemplate::from_model_id(model_id);
+    format_prompt(&request.messages, template)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anvil_core::types::{ChatMessage, Role};
+use anvil_core::types::{ChatMessage, CompletionRequest, Role};
 
     fn msg(role: Role, content: &str) -> ChatMessage {
         ChatMessage {

@@ -51,7 +51,7 @@ async fn openai_complete_parses_response() {
         .await;
 
     let provider =
-        OpenAiProvider::with_base_url("test-key", "gpt-4o-mini", server.uri(), BackendKind::OpenAi);
+        OpenAiProvider::with_base_url("test-key", "gpt-4o-mini", server.uri(), BackendKind::OpenAi).unwrap();
 
     let resp = provider.complete(&user_request("hi")).await.unwrap();
     assert_eq!(resp.content, "hello from mock");
@@ -72,7 +72,7 @@ async fn openai_error_status_is_surfaced() {
         .await;
 
     let provider =
-        OpenAiProvider::with_base_url("nope", "gpt-4o", server.uri(), BackendKind::OpenAi);
+        OpenAiProvider::with_base_url("nope", "gpt-4o", server.uri(), BackendKind::OpenAi).unwrap();
     let err = provider.complete(&user_request("hi")).await.unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("401"), "expected 401 in error, got: {msg}");
@@ -96,7 +96,7 @@ async fn openai_stream_parses_sse_chunks() {
         .mount(&server)
         .await;
 
-    let provider = OpenAiProvider::with_base_url("k", "gpt-4o", server.uri(), BackendKind::OpenAi);
+    let provider = OpenAiProvider::with_base_url("k", "gpt-4o", server.uri(), BackendKind::OpenAi).unwrap();
     let (tx, mut rx) = mpsc::channel::<StreamChunk>(16);
     let mut req = user_request("hi");
     req.stream = true;
@@ -128,7 +128,7 @@ async fn custom_provider_uses_openai_shape() {
         .mount(&server)
         .await;
 
-    let provider = CustomProvider::new("k", "local-model", server.uri());
+    let provider = CustomProvider::new("k", "local-model", server.uri()).unwrap();
     let resp = provider.complete(&user_request("hi")).await.unwrap();
     assert_eq!(resp.content, "custom ok");
 }
@@ -150,12 +150,12 @@ async fn anthropic_complete_parses_response() {
         .mount(&server)
         .await;
 
-    let provider = AnthropicProvider::with_base_url("ak", "claude-sonnet-5", server.uri());
+    let provider = AnthropicProvider::with_base_url("ak", "claude-sonnet-5", server.uri()).unwrap();
     let resp = provider.complete(&user_request("hi")).await.unwrap();
     assert_eq!(resp.content, "anthropic mock reply");
     let usage = resp.usage.unwrap();
     assert_eq!(usage.prompt_tokens, 12);
-    assert_eq!(usage.completion_tokens, 4);
+    assert_eq!(usage.output_tokens, 4);
     assert_eq!(usage.total_tokens, 16);
 }
 
@@ -177,7 +177,7 @@ async fn anthropic_stream_parses_events() {
         .mount(&server)
         .await;
 
-    let provider = AnthropicProvider::with_base_url("ak", "claude-sonnet-5", server.uri());
+    let provider = AnthropicProvider::with_base_url("ak", "claude-sonnet-5", server.uri()).unwrap();
     let (tx, mut rx) = mpsc::channel::<StreamChunk>(16);
     provider.stream(&user_request("hi"), tx).await.unwrap();
 

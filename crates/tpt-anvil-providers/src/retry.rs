@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use anvil_core::{AnvilError, Result};
+use crate::types::{ProviderError, Result};
 use std::future::Future;
 use tracing::warn;
 
@@ -22,8 +22,8 @@ impl Default for RetryConfig {
     }
 }
 
-fn is_retryable(err: &AnvilError) -> bool {
-    if let AnvilError::Provider(msg) = err {
+fn is_retryable(err: &ProviderError) -> bool {
+    if let ProviderError::Provider(msg) = err {
         let lower = msg.to_lowercase();
         lower.contains("429")
             || lower.contains("rate limit")
@@ -32,6 +32,25 @@ fn is_retryable(err: &AnvilError) -> bool {
     } else {
         false
     }
+}
+
+pub fn scrub_error_message(msg: &str) -> String {
+    let truncated = if msg.len() > 200 { &msg[..200] } else { msg };
+    let mut scrubbed = truncated.to_string();
+
+    // Remove API key patterns: sk-..., Bearer ..., key=..., api_key=...
+    let patterns = [
+        r"(?i)(sk-[A-Za-z0-9_-]{10,})",
+        r"(?i)(Bearer\s+[A-Za-z0-9_\-\.]{10,})",
+        r"(?i)(key\s*=\s*[A-Za-z0-9_\-\.]{10,})",
+        r"(?i)(api_key\s*=\s*[A-Za-z0-9_\-\.]{10,})",
+    ];
+    for pattern in &patterns {
+        if let Ok(re) = regex::Regex::new(pattern) {
+            scrubbed = re.replace(&scrubbed, "[REDACTED]").to_string();
+        }
+    }
+    scrubbed
 }
 
 pub async fn with_retry<F, Fut, T>(config: &RetryConfig, f: F) -> Result<T>
@@ -45,11 +64,12 @@ where
             Ok(v) => return Ok(v),
             Err(e) if attempt + 1 < config.max_attempts && is_retryable(&e) => {
                 let delay = (config.base_delay_ms * (1u64 << attempt)).min(config.max_delay_ms);
+                let msg = e.to_string();
                 warn!(
                     "provider request failed (attempt {}/{}): {}; retrying in {}ms",
                     attempt + 1,
                     config.max_attempts,
-                    e,
+                    scrub_error_message(&msg),
                     delay
                 );
                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
@@ -80,7 +100,7 @@ mod tests {
                 let c = Arc::clone(&c);
                 async move {
                     c.fetch_add(1, Ordering::SeqCst);
-                    Ok::<_, AnvilError>(42u32)
+                    Ok::<_, ProviderError>(42u32)
                 }
             },
         )
@@ -104,11 +124,11 @@ mod tests {
                 async move {
                     let n = c.fetch_add(1, Ordering::SeqCst);
                     if n < 2 {
-                        Err(AnvilError::Provider(
+                        Err(ProviderError::Provider(
                             "HTTP 429 Too Many Requests".to_string(),
                         ))
                     } else {
-                        Ok::<_, AnvilError>(99u32)
+                        Ok::<_, ProviderError>(99u32)
                     }
                 }
             },
@@ -132,7 +152,7 @@ mod tests {
                 let c = Arc::clone(&c);
                 async move {
                     c.fetch_add(1, Ordering::SeqCst);
-                    Err(AnvilError::Provider("401 Unauthorized".to_string()))
+                    Err(ProviderError::Provider("401 Unauthorized".to_string()))
                 }
             },
         )
@@ -154,7 +174,7 @@ mod tests {
             let c = Arc::clone(&c);
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
-                Err(AnvilError::Provider("rate limit exceeded".to_string()))
+                Err(ProviderError::Provider("rate limit exceeded".to_string()))
             }
         })
         .await;

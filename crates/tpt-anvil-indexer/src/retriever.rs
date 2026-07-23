@@ -4,14 +4,13 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use anvil_config::AnvilConfig;
 use anyhow::Result;
 use tracing::info;
 
 use crate::embedding::{cosine_similarity, Embedder, HashingEmbedder};
 use crate::fusion::{reciprocal_rank_fusion, RankedItem, DEFAULT_RRF_K};
+use crate::types::{ChunkType, ContextChunk, IndexerConfig};
 use crate::{store::IndexStore, walker, watcher::IndexWatcher};
-use anvil_core::types::{ChunkType, ContextChunk};
 
 pub struct Retriever {
     store: Arc<Mutex<IndexStore>>,
@@ -21,7 +20,7 @@ pub struct Retriever {
 }
 
 impl Retriever {
-    pub fn new(root: &Path, cfg: &AnvilConfig) -> Result<Self> {
+    pub fn new(root: &Path, cfg: &IndexerConfig) -> Result<Self> {
         let db_path = root.join(".anvil").join("index.db");
         std::fs::create_dir_all(db_path.parent().unwrap())?;
         let store = Arc::new(Mutex::new(IndexStore::open(&db_path)?));
@@ -78,7 +77,7 @@ impl Retriever {
         Ok(Self {
             store,
             _watcher: watcher,
-            top_k: cfg.indexing.top_k,
+            top_k: cfg.top_k,
             embedder,
         })
     }

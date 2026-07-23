@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use anvil_core::{
-    types::{
-        BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Role, StreamChunk,
-        TokenUsage,
-    },
-    AnvilError, Result,
+use crate::types::{
+    BackendKind, CompletionRequest, CompletionResponse, ModelInfo, ProviderError, Result, Role,
+    StreamChunk, TokenUsage,
 };
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -15,6 +12,7 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 
 use crate::provider::CloudProvider;
+use std::time::Duration;
 
 pub struct AnthropicProvider {
     api_key: String,
@@ -24,7 +22,7 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::with_base_url(api_key, model, "https://api.anthropic.com/v1")
     }
 
@@ -33,13 +31,19 @@ impl AnthropicProvider {
         api_key: impl Into<String>,
         model: impl Into<String>,
         base_url: impl Into<String>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(120))
+            .build()
+            .map_err(|e| ProviderError::Provider(format!("failed to create HTTP client: {e}")))?;
+
+        Ok(Self {
             api_key: api_key.into(),
             default_model: model.into(),
             base_url: base_url.into().trim_end_matches('/').to_string(),
-            client: Client::new(),
-        }
+            client,
+        })
     }
 }
 
@@ -139,12 +143,12 @@ impl CloudProvider for AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| AnvilError::Provider(e.to_string()))?;
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(AnvilError::Provider(format!(
+            return Err(ProviderError::Provider(format!(
                 "Anthropic API error {status}: {text}"
             )));
         }
@@ -152,7 +156,7 @@ impl CloudProvider for AnthropicProvider {
         let parsed: AnthropicResponse = resp
             .json()
             .await
-            .map_err(|e| AnvilError::Provider(e.to_string()))?;
+            .map_err(|e| ProviderError::Provider(e.to_string()))?;
         let text = parsed
             .content
             .into_iter()
@@ -213,11 +217,11 @@ impl CloudProvider for AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| AnvilError::Provider(e.to_string()))?
+            .map_err(|e| ProviderError::Provider(e.to_string()))?
             .bytes_stream();
 
         while let Some(chunk) = stream.next().await {
-            let bytes = chunk.map_err(|e| AnvilError::Provider(e.to_string()))?;
+            let bytes = chunk.map_err(|e| ProviderError::Provider(e.to_string()))?;
             let text = std::str::from_utf8(&bytes).unwrap_or("");
             for line in text.lines() {
                 let line = line.trim();

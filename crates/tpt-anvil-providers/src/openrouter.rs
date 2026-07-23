@@ -2,10 +2,7 @@
 // Copyright (c) 2026 TPT Solutions
 
 use crate::{openai::OpenAiProvider, provider::CloudProvider};
-use anvil_core::{
-    types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, StreamChunk},
-    Result,
-};
+use crate::types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Result, StreamChunk};
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
@@ -13,13 +10,13 @@ use tokio::sync::mpsc;
 pub struct OpenRouterProvider(OpenAiProvider);
 
 impl OpenRouterProvider {
-    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
-        Self(OpenAiProvider::with_base_url(
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Result<Self> {
+        Ok(Self(OpenAiProvider::with_base_url(
             api_key,
             model,
             "https://openrouter.ai/api/v1",
             BackendKind::OpenRouter,
-        ))
+        )?))
     }
 }
 

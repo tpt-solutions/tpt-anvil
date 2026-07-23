@@ -11,6 +11,8 @@ pub mod openrouter;
 pub mod provider;
 pub mod registry;
 pub mod retry;
+pub mod router;
+pub mod types;
 
 pub use cost::{estimate_cost, pricing_for, PricingTier};
 pub use provider::CloudProvider;

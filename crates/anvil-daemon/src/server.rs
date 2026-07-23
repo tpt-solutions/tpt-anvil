@@ -19,6 +19,14 @@ use tracing::{error, info};
 
 use crate::pid;
 
+fn token_path() -> std::path::PathBuf {
+    dirs::runtime_dir()
+        .or_else(dirs::data_local_dir)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("anvil")
+        .join("anvil.token")
+}
+
 pub async fn run(project_root: Option<&str>) -> Result<()> {
     let project_path = project_root.map(Path::new);
     let cfg = ConfigLoader::load(project_path)?;
@@ -31,6 +39,22 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
     let cloud = provider_registry.active.map(|p| Arc::clone(&p));
 
     let handler = Arc::new(CommandHandler::new(backend, cloud));
+
+    // Generate per-run authentication token
+    let mut token_buf = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut token_buf);
+    let token: Arc<String> = Arc::new(token_buf.iter().map(|b| format!("{b:02x}")).collect());
+
+    let tp = token_path();
+    if let Some(parent) = tp.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&tp, token.as_bytes())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tp, std::fs::Permissions::from_mode(0o600))?;
+    }
 
     pid::write_pid()?;
     info!(
@@ -46,10 +70,10 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
     });
 
     #[cfg(unix)]
-    run_unix(handler, shutdown).await?;
+    run_unix(handler, shutdown, token).await?;
 
     #[cfg(windows)]
-    run_windows(handler, shutdown).await?;
+    run_windows(handler, shutdown, token).await?;
 
     pid::remove_pid();
     Ok(())
@@ -58,17 +82,47 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
 // ── Unix socket transport ──────────────────────────────────────────────────
 
 #[cfg(unix)]
-async fn run_unix(handler: Arc<CommandHandler>, shutdown: Arc<tokio::sync::Notify>) -> Result<()> {
+async fn run_unix(
+    handler: Arc<CommandHandler>,
+    shutdown: Arc<tokio::sync::Notify>,
+    token: Arc<String>,
+) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
     use tokio::net::UnixListener;
 
     let socket_path = unix_socket_path();
-    if socket_path.exists() {
-        std::fs::remove_file(&socket_path)?;
-    }
-    std::fs::create_dir_all(socket_path.parent().unwrap())?;
+    let dir = socket_path.parent().unwrap();
+    std::fs::create_dir_all(dir)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
 
-    let listener = UnixListener::bind(&socket_path)
-        .with_context(|| format!("failed to bind IPC socket at {}", socket_path.display()))?;
+    // TOCTOU-safe bind: try bind, on AlreadyExists remove once and retry (max 3 attempts)
+    let mut bound = None;
+    for attempt in 0..3u32 {
+        match UnixListener::bind(&socket_path) {
+            Ok(l) => {
+                bound = Some(l);
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 2 => {
+                let _ = std::fs::remove_file(&socket_path);
+                continue;
+            }
+            Err(e) => {
+                return Err(e).context(format!(
+                    "failed to bind IPC socket at {}",
+                    socket_path.display()
+                ));
+            }
+        }
+    }
+    let listener = bound.ok_or_else(|| {
+        anyhow::anyhow!(
+            "failed to bind IPC socket at {} after retries",
+            socket_path.display()
+        )
+    })?;
+
+    std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))?;
 
     info!("Anvil daemon listening on {}", socket_path.display());
 
@@ -78,9 +132,10 @@ async fn run_unix(handler: Arc<CommandHandler>, shutdown: Arc<tokio::sync::Notif
                 match accept {
                     Ok((stream, _)) => {
                         let handler = Arc::clone(&handler);
+                        let token = Arc::clone(&token);
                         tokio::spawn(async move {
                             let (reader, writer) = stream.into_split();
-                            handle_rpc(reader, writer, handler).await;
+                            handle_rpc(reader, writer, handler, token).await;
                         });
                     }
                     Err(e) => error!("accept error: {e}"),
@@ -117,6 +172,7 @@ fn pipe_name() -> &'static str {
 async fn run_windows(
     handler: Arc<CommandHandler>,
     shutdown: Arc<tokio::sync::Notify>,
+    token: Arc<String>,
 ) -> Result<()> {
     use tokio::net::windows::named_pipe::ServerOptions;
 
@@ -131,6 +187,7 @@ async fn run_windows(
 
         let handler = Arc::clone(&handler);
         let shutdown_clone = Arc::clone(&shutdown);
+        let token = Arc::clone(&token);
 
         tokio::select! {
             connect = pipe.connect() => {
@@ -138,7 +195,7 @@ async fn run_windows(
                     Ok(()) => {
                         tokio::spawn(async move {
                             let (reader, writer) = tokio::io::split(pipe);
-                            handle_rpc(reader, writer, handler).await;
+                            handle_rpc(reader, writer, handler, token).await;
                         });
                     }
                     Err(e) => error!("pipe connect error: {e}"),
@@ -155,7 +212,7 @@ async fn run_windows(
 
 // ── Shared JSON-RPC handler ────────────────────────────────────────────────
 
-async fn handle_rpc<R, W>(reader: R, mut writer: W, handler: Arc<CommandHandler>)
+async fn handle_rpc<R, W>(reader: R, mut writer: W, handler: Arc<CommandHandler>, token: Arc<String>)
 where
     R: tokio::io::AsyncRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
@@ -173,6 +230,16 @@ where
         };
 
         let id = req.id;
+
+        if req.method.as_str() != "health" {
+            let provided = req.params.get("auth").and_then(|v| v.as_str());
+            if provided != Some(token.as_str()) {
+                let err = JsonRpcResponse::err(id, -32001, "unauthorized: invalid or missing auth token");
+                send_line(&mut writer, &err).await;
+                continue;
+            }
+        }
+
         let response = match req.method.as_str() {
             "health" => JsonRpcResponse::ok(
                 id,

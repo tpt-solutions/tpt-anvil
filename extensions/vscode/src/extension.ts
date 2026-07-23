@@ -4,7 +4,8 @@
 import * as vscode from 'vscode';
 import { DaemonClient } from './daemon';
 import { ChatPanel } from './chat';
-import { applyDiff } from './diff';
+
+import { AnvilChatViewProvider } from './chatViewProvider';
 
 let daemon: DaemonClient | undefined;
 let chatPanel: ChatPanel | undefined;
@@ -21,6 +22,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
     await daemon.start();
     updateStatusBar(statusBar, daemon);
+
+    const chatViewProvider = new AnvilChatViewProvider(context, daemon);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider('anvil.chatPanel', chatViewProvider),
+    );
+
+    syncSettingsToDaemon(daemon);
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration((e) => {
+            if (e.affectsConfiguration('anvil')) {
+                syncSettingsToDaemon(daemon!);
+            }
+        }),
+    );
 
     context.subscriptions.push(
         vscode.commands.registerCommand('anvil.openChat', () => {
@@ -59,6 +74,22 @@ async function runCommand(cmd: string, context: vscode.ExtensionContext) {
     }
     chatPanel.show();
     chatPanel.sendCommand(cmd, editor);
+}
+
+async function syncSettingsToDaemon(daemon: DaemonClient) {
+    const config = vscode.workspace.getConfiguration('anvil');
+    const settings = {
+        backend: config.get<string>('backend'),
+        model: config.get<string>('model'),
+        ollama_url: config.get<string>('ollamaUrl'),
+        max_tokens: config.get<number>('maxTokens'),
+        temperature: config.get<number>('temperature'),
+    };
+    try {
+        await daemon.request('config/update', settings);
+    } catch {
+        // Daemon may not support this method yet; ignore silently
+    }
 }
 
 function updateStatusBar(bar: vscode.StatusBarItem, client: DaemonClient) {

@@ -7,7 +7,9 @@ pub mod embedding;
 pub mod fusion;
 pub mod retriever;
 pub mod store;
+pub mod outline;
 pub mod symbols;
+pub mod types;
 pub mod walker;
 pub mod watcher;
 

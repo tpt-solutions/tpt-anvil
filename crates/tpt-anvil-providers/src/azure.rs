@@ -2,10 +2,7 @@
 // Copyright (c) 2026 TPT Solutions
 
 use crate::{openai::OpenAiProvider, provider::CloudProvider};
-use anvil_core::{
-    types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, StreamChunk},
-    Result,
-};
+use crate::types::{BackendKind, CompletionRequest, CompletionResponse, ModelInfo, Result, StreamChunk};
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
@@ -14,18 +11,18 @@ pub struct AzureOpenAiProvider(OpenAiProvider);
 
 impl AzureOpenAiProvider {
     /// endpoint: e.g. "https://my-resource.openai.azure.com/openai/deployments/my-deployment"
-    pub fn new(api_key: impl Into<String>, endpoint: impl Into<String>, api_version: &str) -> Self {
+    pub fn new(api_key: impl Into<String>, endpoint: impl Into<String>, api_version: &str) -> Result<Self> {
         let base = format!(
             "{}?api-version={}",
             endpoint.into().trim_end_matches('/'),
             api_version
         );
-        Self(OpenAiProvider::with_base_url(
+        Ok(Self(OpenAiProvider::with_base_url(
             api_key,
             "",
             base,
             BackendKind::AzureOpenAi,
-        ))
+        )?))
     }
 }
 

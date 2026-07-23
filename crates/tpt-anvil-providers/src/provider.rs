@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use anvil_core::{
-    types::{CompletionRequest, CompletionResponse, ModelInfo, StreamChunk},
-    Result,
+use crate::types::{
+    CompletionRequest, CompletionResponse, ModelInfo, Result, StreamChunk,
 };
 use async_trait::async_trait;
 use tokio::sync::mpsc;
