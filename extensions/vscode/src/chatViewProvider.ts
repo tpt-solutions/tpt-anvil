@@ -2,7 +2,7 @@
 // Copyright (c) 2026 TPT Solutions
 
 import * as vscode from 'vscode';
-import { DaemonClient, buildContext } from './daemon';
+import { DaemonClient, VerificationResult, buildContext } from './daemon';
 
 export class AnvilChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'anvil.chatPanel';
@@ -41,9 +41,27 @@ export class AnvilChatViewProvider implements vscode.WebviewViewProvider {
         this.view?.webview.postMessage({ type: 'assistant_start' });
 
         try {
-            await this.daemon.slashCommand(input, ctx, convId, (chunk) => {
+            const result = await this.daemon.slashCommand(input, ctx, convId, (chunk) => {
                 this.view?.webview.postMessage({ type: 'token', delta: chunk.delta, done: chunk.done });
             });
+            if (result.verification && !result.verification.passed) {
+                this.view?.webview.postMessage({
+                    type: 'verification_warning',
+                    errors: result.verification.errors,
+                    compiler_output: result.verification.compiler_output,
+                    lint_output: result.verification.lint_output,
+                    test_output: result.verification.test_output,
+                    retries_used: result.verification.retries_used,
+                    max_retries: result.verification.max_retries,
+                    retried: result.verification.retried,
+                });
+            } else if (result.verification && result.verification.passed && result.verification.retried) {
+                this.view?.webview.postMessage({
+                    type: 'verification_passed_after_retry',
+                    retries_used: result.verification.retries_used,
+                    max_retries: result.verification.max_retries,
+                });
+            }
         } catch (err: any) {
             this.view?.webview.postMessage({ type: 'error', message: err.message });
         }
@@ -64,6 +82,8 @@ export class AnvilChatViewProvider implements vscode.WebviewViewProvider {
   .user { background: var(--vscode-button-background); color: var(--vscode-button-foreground); align-self: flex-end; }
   .assistant { background: var(--vscode-editorWidget-background); align-self: flex-start; }
   .error { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); }
+  .verification-warning { background: var(--vscode-inputValidation-warningBackground); color: var(--vscode-inputValidation-warningForeground); border-left: 3px solid var(--vscode-editorWarning-foreground); padding: 8px 12px; border-radius: 4px; font-size: 0.9em; }
+  .verification-warning b { display: block; margin-bottom: 4px; }
   code, pre { font-family: var(--vscode-editor-font-family); background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px; }
   pre { padding: 8px; overflow-x: auto; }
   #input-row { display: flex; gap: 8px; padding: 8px; border-top: 1px solid var(--vscode-panel-border); }
@@ -112,6 +132,36 @@ export class AnvilChatViewProvider implements vscode.WebviewViewProvider {
     else if (msg.type === 'assistant_start') { currentAssistant = addMsg('assistant', ''); }
     else if (msg.type === 'token') { if (currentAssistant) currentAssistant.textContent += msg.delta; messagesEl.scrollTop = messagesEl.scrollHeight; }
     else if (msg.type === 'error') { addMsg('error', 'Error: ' + msg.message); currentAssistant = null; }
+    else if (msg.type === 'verification_warning') {
+      var el = document.createElement('div');
+      el.className = 'msg verification-warning';
+      var retryNote = msg.retried ? '<br><i>Anvil retried ' + msg.retries_used + ' time(s) after the initial attempt failed.</i>' : '';
+      var html = '<b>Verification failed</b>' + retryNote;
+      if (msg.errors && msg.errors.length) {
+        html += '<br>' + msg.errors.map(function(e) { return e.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }).join('<br>');
+      }
+      if (msg.compiler_output) {
+        html += '<code>Compiler: ' + msg.compiler_output.substring(0, 500).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code>';
+      }
+      if (msg.lint_output) {
+        html += '<code>Lint: ' + msg.lint_output.substring(0, 500).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code>';
+      }
+      if (msg.test_output) {
+        html += '<code>Tests: ' + msg.test_output.substring(0, 500).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code>';
+      }
+      el.innerHTML = html;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+    else if (msg.type === 'verification_passed_after_retry') {
+      var el = document.createElement('div');
+      el.className = 'msg verification-warning';
+      el.style.background = 'var(--vscode-terminal-ansiGreen, #d4edda)';
+      el.style.borderLeftColor = 'var(--vscode-terminal-ansiGreen, #28a745)';
+      el.innerHTML = '<b>Anvil checked its own work</b> — verification failed initially but passed after ' + msg.retries_used + ' retry attempt(s).';
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
     else if (msg.type === 'prefill') { inputEl.value = msg.text + ' '; inputEl.focus(); }
   });
 </script>

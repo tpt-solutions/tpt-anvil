@@ -1,0 +1,23 @@
+id = "py-type-annotation-01"
+description = "Add type annotations to Python functions"
+language = "python"
+kind = "compiler"
+introduced_at = "2026-04-01"
+retires_at = "2026-10-01"
+scaffold_path = "scaffold/python"
+target_file = "utils.py"
+
+prompt = """
+Add proper type annotations to all three functions in utils.py:
+1. `sum_list(numbers: list[int]) -> int`
+2. `is_palindrome(s: str) -> bool`
+3. `fibonacci(n: int) -> int`
+Also add a new function `binary_search(arr: list[int], target: int) -> int`
+that returns the index of target or -1 if not found. Use type annotations.
+Output the complete corrected file.
+"""
+
+[verify_overrides]
+run_tests = false
+run_linter = true
+timeout_seconds = 30

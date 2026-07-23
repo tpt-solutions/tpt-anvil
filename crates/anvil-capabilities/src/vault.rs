@@ -24,6 +24,57 @@ pub struct RedactionHit {
     pub count: usize,
 }
 
+/// Entry written to the redaction transparency log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedactionLogEntry {
+    pub timestamp: String,
+    pub label: String,
+    pub count: usize,
+    pub source_command: Option<String>,
+}
+
+/// Append redaction hits to the local transparency log.
+/// Only called when `log_redactions` config is enabled. The log never leaves
+/// the machine and contains only labels + counts, never matched values.
+pub fn log_redactions(hits: &[RedactionHit], command: Option<&str>) {
+    if hits.is_empty() {
+        return;
+    }
+    let Some(log_dir) = dirs::data_local_dir() else {
+        return;
+    };
+    let log_path = log_dir.join("anvil").join("redactions.log");
+    if let Some(parent) = log_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let timestamp = chrono_free_timestamp();
+    for hit in hits {
+        let entry = RedactionLogEntry {
+            timestamp: timestamp.clone(),
+            label: hit.label.clone(),
+            count: hit.count,
+            source_command: command.map(|s| s.to_string()),
+        };
+        if let Ok(line) = serde_json::to_string(&entry) {
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+                .and_then(|mut f| {
+                    use std::io::Write;
+                    writeln!(f, "{line}")
+                });
+        }
+    }
+}
+
+fn chrono_free_timestamp() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| format!("{}s", d.as_secs()))
+        .unwrap_or_else(|_| "unknown".into())
+}
+
 /// Vault configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VaultConfig {

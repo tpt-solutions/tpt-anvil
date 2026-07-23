@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use anvil_capabilities::commands::CommandHandler;
+use anvil_capabilities::commands::{CommandHandler, HandlerConfig};
 use anvil_config::loader::ConfigLoader;
 use anvil_core::{
     ipc::{JsonRpcRequest, JsonRpcResponse, SlashCommandParams, StatusResponse},
@@ -12,9 +12,12 @@ use anvil_core::{
 };
 use anvil_inference::registry::BackendRegistry;
 use anyhow::{Context, Result};
+use subtle::ConstantTimeEq;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
-use tpt_anvil_providers::{registry::ProviderRegistry, types::ProviderConfig};
+use tpt_anvil_providers::{
+    registry::ProviderRegistry, router::RouterConfig, types::ProviderConfig,
+};
 use tracing::{error, info};
 
 use crate::pid;
@@ -23,7 +26,7 @@ use crate::pid;
 /// crates.io publishing, so it defines its own minimal `ProviderConfig`
 /// instead of depending on `anvil_config::AnvilConfig` directly. This adapts
 /// the full daemon config into that minimal shape.
-fn to_provider_config(cfg: &anvil_config::AnvilConfig) -> ProviderConfig {
+pub(crate) fn to_provider_config(cfg: &anvil_config::AnvilConfig) -> ProviderConfig {
     let p = &cfg.providers;
     ProviderConfig {
         active: p.active.clone(),
@@ -39,6 +42,46 @@ fn to_provider_config(cfg: &anvil_config::AnvilConfig) -> ProviderConfig {
         custom_base_url: p.custom.base_url.clone(),
         custom_model: p.custom.model.clone(),
         custom_api_key_entry: p.custom.api_key_entry.clone(),
+    }
+}
+
+/// Adapts `anvil-capabilities`/`anvil-config`'s Vault/Verify/Router config
+/// shapes into a `HandlerConfig` for `CommandHandler` — the wiring point for
+/// todo.md Phase 16 (Vault, Smart Context, Router, Verifier).
+fn to_handler_config(
+    cfg: &anvil_config::AnvilConfig,
+    project_root: std::path::PathBuf,
+) -> HandlerConfig {
+    HandlerConfig {
+        vault: anvil_capabilities::vault::VaultConfig {
+            enabled: cfg.vault.enabled,
+            redact_local: cfg.vault.redact_local,
+            custom_patterns: cfg
+                .vault
+                .custom_patterns
+                .iter()
+                .map(|p| anvil_capabilities::vault::CustomPattern {
+                    name: p.name.clone(),
+                    pattern: p.pattern.clone(),
+                    replacement: p.replacement.clone(),
+                })
+                .collect(),
+        },
+        verify: anvil_capabilities::verify::VerifyConfig {
+            enabled: cfg.verify.enabled,
+            run_tests: cfg.verify.run_tests,
+            run_linter: cfg.verify.run_linter,
+            timeout_seconds: cfg.verify.timeout_seconds,
+            max_retries: cfg.verify.max_retries,
+        },
+        smart_context: cfg.smart_context.clone(),
+        router: RouterConfig {
+            enabled: cfg.router.enabled,
+            prefer_cheapest: cfg.router.prefer_cheapest,
+            max_cost_per_request_usd: cfg.router.max_cost_per_request_usd,
+            pinned: cfg.router.pinned.clone(),
+        },
+        project_root,
     }
 }
 
@@ -60,8 +103,19 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
 
     let backend = Arc::clone(&backend_registry.active);
     let cloud = provider_registry.active.map(|p| Arc::clone(&p));
+    let available_providers = provider_registry.available;
 
-    let handler = Arc::new(CommandHandler::new(backend, cloud));
+    let resolved_project_root = project_path
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let handler_config = to_handler_config(&cfg, resolved_project_root);
+
+    let handler = Arc::new(CommandHandler::new(
+        backend,
+        cloud,
+        available_providers,
+        handler_config,
+    ));
 
     // Generate per-run authentication token
     let mut token_buf = [0u8; 32];
@@ -78,6 +132,10 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&tp, std::fs::Permissions::from_mode(0o600))?;
     }
+    #[cfg(windows)]
+    {
+        set_windows_owner_only_acl(&tp);
+    }
 
     pid::write_pid()?;
     info!(
@@ -92,11 +150,14 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
         shutdown_clone.notify_one();
     });
 
+    // Cap concurrent RPC connections to bound local resource / cost exhaustion.
+    let concurrency_limit = Arc::new(tokio::sync::Semaphore::new(32));
+
     #[cfg(unix)]
-    run_unix(handler, shutdown, token).await?;
+    run_unix(handler, shutdown, token, concurrency_limit).await?;
 
     #[cfg(windows)]
-    run_windows(handler, shutdown, token).await?;
+    run_windows(handler, shutdown, token, concurrency_limit).await?;
 
     pid::remove_pid();
     Ok(())
@@ -109,6 +170,7 @@ async fn run_unix(
     handler: Arc<CommandHandler>,
     shutdown: Arc<tokio::sync::Notify>,
     token: Arc<String>,
+    concurrency: Arc<tokio::sync::Semaphore>,
 ) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     use tokio::net::UnixListener;
@@ -156,10 +218,17 @@ async fn run_unix(
                     Ok((stream, _)) => {
                         let handler = Arc::clone(&handler);
                         let token = Arc::clone(&token);
-                        tokio::spawn(async move {
-                            let (reader, writer) = stream.into_split();
-                            handle_rpc(reader, writer, handler, token).await;
-                        });
+                        let permit = Arc::clone(&concurrency).acquire_owned().await;
+                        match permit {
+                            Ok(_permit) => {
+                                tokio::spawn(async move {
+                                    let (reader, writer) = stream.into_split();
+                                    handle_rpc(reader, writer, handler, token).await;
+                                    drop(_permit);
+                                });
+                            }
+                            Err(_) => error!("semaphore closed, dropping connection"),
+                        }
                     }
                     Err(e) => error!("accept error: {e}"),
                 }
@@ -191,11 +260,25 @@ fn pipe_name() -> &'static str {
     r"\\.\pipe\anvil"
 }
 
+/// On Windows, set restrictive file permissions on `path` so only the
+/// current user can read/write it.  This mirrors the Unix `chmod 0600`
+/// treatment.  Uses the Windows `icacls` command as a best-effort approach;
+/// full DACL FFI is possible but fragile across `windows-sys` versions.
+#[cfg(windows)]
+fn set_windows_owner_only_acl(path: &std::path::Path) {
+    let path_str = path.display().to_string();
+
+    let _ = std::process::Command::new("icacls")
+        .args([&path_str, "/inheritance:r", "/grant:r", "*S-1-3-4:(F)"])
+        .output();
+}
+
 #[cfg(windows)]
 async fn run_windows(
     handler: Arc<CommandHandler>,
     shutdown: Arc<tokio::sync::Notify>,
     token: Arc<String>,
+    concurrency: Arc<tokio::sync::Semaphore>,
 ) -> Result<()> {
     use tokio::net::windows::named_pipe::ServerOptions;
 
@@ -211,15 +294,22 @@ async fn run_windows(
         let handler = Arc::clone(&handler);
         let shutdown_clone = Arc::clone(&shutdown);
         let token = Arc::clone(&token);
+        let permit = Arc::clone(&concurrency).acquire_owned().await;
 
         tokio::select! {
             connect = pipe.connect() => {
                 match connect {
                     Ok(()) => {
-                        tokio::spawn(async move {
-                            let (reader, writer) = tokio::io::split(pipe);
-                            handle_rpc(reader, writer, handler, token).await;
-                        });
+                        match permit {
+                            Ok(_permit) => {
+                                tokio::spawn(async move {
+                                    let (reader, writer) = tokio::io::split(pipe);
+                                    handle_rpc(reader, writer, handler, token).await;
+                                    drop(_permit);
+                                });
+                            }
+                            Err(_) => error!("semaphore closed, dropping connection"),
+                        }
                     }
                     Err(e) => error!("pipe connect error: {e}"),
                 }
@@ -260,7 +350,19 @@ async fn handle_rpc<R, W>(
 
         if req.method.as_str() != "health" {
             let provided = req.params.get("auth").and_then(|v| v.as_str());
-            if provided != Some(token.as_str()) {
+            let authorized = match provided {
+                Some(p) => {
+                    let p_bytes = p.as_bytes();
+                    let t_bytes = token.as_bytes();
+                    if p_bytes.len() == t_bytes.len() {
+                        p_bytes.ct_eq(t_bytes).into()
+                    } else {
+                        false
+                    }
+                }
+                None => false,
+            };
+            if !authorized {
                 let err =
                     JsonRpcResponse::err(id, -32001, "unauthorized: invalid or missing auth token");
                 send_line(&mut writer, &err).await;
@@ -303,9 +405,20 @@ async fn handle_rpc<R, W>(
                 let ctx = params.context.clone();
                 let conv_id = params.conversation_id.clone();
 
+                let (result_tx, mut result_rx) = mpsc::channel::<
+                    anyhow::Result<(
+                        String,
+                        Option<anvil_core::types::DiffPatch>,
+                        Option<anvil_capabilities::verify::VerificationResult>,
+                    )>,
+                >(1);
+
                 tokio::spawn(async move {
-                    let _ = handler_clone
+                    let result = handler_clone
                         .run(&command, &ctx, conv_id.as_deref(), token_tx)
+                        .await;
+                    let _ = result_tx
+                        .send(result.map_err(|e| anyhow::anyhow!("{e}")))
                         .await;
                 });
 
@@ -324,7 +437,23 @@ async fn handle_rpc<R, W>(
                     }
                 }
 
-                JsonRpcResponse::ok(id, serde_json::json!({ "content": full }))
+                let mut response_value = serde_json::json!({ "content": full });
+
+                if let Some(Ok((_text, _diff, Some(v)))) = result_rx.recv().await {
+                    let retried = v.retries_used > 0;
+                    response_value["verification"] = serde_json::json!({
+                        "passed": v.passed,
+                        "errors": v.errors,
+                        "compiler_output": v.compiler_output,
+                        "lint_output": v.lint_output,
+                        "test_output": v.test_output,
+                        "retries_used": v.retries_used,
+                        "max_retries": v.max_retries,
+                        "retried": retried,
+                    });
+                }
+
+                JsonRpcResponse::ok(id, response_value)
             }
 
             other => JsonRpcResponse::err(id, -32601, format!("method not found: {other}")),

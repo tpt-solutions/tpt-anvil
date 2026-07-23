@@ -12,6 +12,11 @@ use crate::schema::AnvilConfig;
 pub struct ConfigLoader;
 
 impl ConfigLoader {
+    /// Return the path to the user-level config file, if determinable.
+    pub fn config_path() -> Option<PathBuf> {
+        user_config_path()
+    }
+
     /// Load config using a fallback chain: project → user → defaults.
     ///
     /// Layers are merged as raw TOML tables *before* being deserialized into
@@ -204,5 +209,25 @@ mod tests {
         );
         assert_eq!(merged.providers.openai.api_key_entry, Some("my_key".into()));
         assert_eq!(merged.providers.openai.model, "gpt-4o".to_string());
+    }
+
+    /// Regression test: a partial `[benchmark]` table (only some keys set)
+    /// merges correctly with defaults rather than failing on missing fields.
+    #[test]
+    fn merge_partial_benchmark_table() {
+        let merged = merged_config(
+            "",
+            r#"
+            [benchmark]
+            enabled = true
+            rotation_period_days = 90
+            "#,
+        );
+        assert!(merged.benchmark.enabled);
+        assert_eq!(merged.benchmark.rotation_period_days, 90);
+        // Other fields should retain defaults
+        assert_eq!(merged.benchmark.stagger_interval_days, 30);
+        assert_eq!(merged.benchmark.max_stored, 30);
+        assert!(!merged.benchmark.adaptive.enabled);
     }
 }

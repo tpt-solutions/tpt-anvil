@@ -21,6 +21,8 @@ pub struct AnvilConfig {
     pub router: RouterConfigSchema,
     #[serde(default)]
     pub verify: VerifyConfigSchema,
+    #[serde(default)]
+    pub benchmark: BenchmarkConfigSchema,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -349,4 +351,78 @@ fn default_timeout() -> u64 {
 }
 fn default_max_retries() -> u32 {
     1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkConfigSchema {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Path to the core task TOML directory (local-dev override; production
+    /// uses the embedded suite).
+    #[serde(default)]
+    pub core_suite_path: Option<String>,
+    /// Rotation period in days before a core task retires (default 180).
+    #[serde(default = "default_rotation_period")]
+    pub rotation_period_days: u32,
+    /// Stagger interval in days between new task introductions (default 30).
+    #[serde(default = "default_stagger_interval")]
+    pub stagger_interval_days: u32,
+    /// Maximum number of stored scorecards (LRU eviction, default 30).
+    #[serde(default = "default_max_stored")]
+    pub max_stored: u32,
+    /// Adaptive benchmark configuration.
+    #[serde(default)]
+    pub adaptive: AdaptiveConfigSchema,
+}
+
+impl Default for BenchmarkConfigSchema {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            core_suite_path: None,
+            rotation_period_days: 180,
+            stagger_interval_days: 30,
+            max_stored: 30,
+            adaptive: AdaptiveConfigSchema::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdaptiveConfigSchema {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Provider to use as the evaluator for generating adaptive tasks.
+    #[serde(default)]
+    pub evaluator_provider: Option<String>,
+    /// Model to use as the evaluator.
+    #[serde(default)]
+    pub evaluator_model: Option<String>,
+    /// Maximum adaptive tasks to generate per benchmark run.
+    #[serde(default = "default_max_adaptive_tasks")]
+    pub max_tasks_per_run: u32,
+}
+
+impl Default for AdaptiveConfigSchema {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            evaluator_provider: None,
+            evaluator_model: None,
+            max_tasks_per_run: 5,
+        }
+    }
+}
+
+fn default_rotation_period() -> u32 {
+    180
+}
+fn default_stagger_interval() -> u32 {
+    30
+}
+fn default_max_stored() -> u32 {
+    30
+}
+fn default_max_adaptive_tasks() -> u32 {
+    5
 }

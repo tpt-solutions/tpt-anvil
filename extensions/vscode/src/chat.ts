@@ -2,7 +2,7 @@
 // Copyright (c) 2026 TPT Solutions
 
 import * as vscode from 'vscode';
-import { DaemonClient, buildContext } from './daemon';
+import { DaemonClient, VerificationResult, buildContext } from './daemon';
 import { applyDiff } from './diff';
 
 function detectDiff(text: string): string | null {
@@ -58,20 +58,46 @@ export class ChatPanel {
 
         let fullResponse = '';
         let filePath = ctx.file_path;
+        let verification: VerificationResult | undefined;
 
         try {
-            await this.daemon.slashCommand(input, ctx, convId, (chunk) => {
+            const result = await this.daemon.slashCommand(input, ctx, convId, (chunk) => {
                 if (chunk.delta) fullResponse += chunk.delta;
                 this.panel?.webview.postMessage({ type: 'token', delta: chunk.delta, done: chunk.done });
             });
+            verification = result.verification;
+
+            if (verification && !verification.passed) {
+                this.panel?.webview.postMessage({
+                    type: 'verification_warning',
+                    errors: verification.errors,
+                    compiler_output: verification.compiler_output,
+                    lint_output: verification.lint_output,
+                    test_output: verification.test_output,
+                    retries_used: verification.retries_used,
+                    max_retries: verification.max_retries,
+                    retried: verification.retried,
+                });
+            } else if (verification && verification.passed && verification.retried) {
+                this.panel?.webview.postMessage({
+                    type: 'verification_passed_after_retry',
+                    retries_used: verification.retries_used,
+                    max_retries: verification.max_retries,
+                });
+            }
 
             const diff = detectDiff(fullResponse);
             if (diff && filePath) {
-                const choice = await vscode.window.showInformationMessage(
-                    `Anvil generated a code change for ${filePath}. Review the diff and choose:`,
-                    'Apply', 'Preview', 'Dismiss',
-                );
-                if (choice === 'Apply') {
+                const choice = verification && !verification.passed
+                    ? await vscode.window.showWarningMessage(
+                        `Anvil generated a code change for ${filePath}, but verification failed:\n${verification.errors[0] ?? 'unknown error'}`,
+                        'Apply Anyway', 'Preview', 'Dismiss',
+                    )
+                    : await vscode.window.showInformationMessage(
+                        `Anvil generated a code change for ${filePath}. Review the diff and choose:`,
+                        'Apply', 'Preview', 'Dismiss',
+                    );
+                if (choice === 'Apply' || choice === 'Apply Anyway') {
                     await applyDiff(filePath, diff);
                 } else if (choice === 'Preview') {
                     const doc = await vscode.workspace.openTextDocument({
@@ -101,6 +127,9 @@ export class ChatPanel {
   .user { background: var(--vscode-button-background); color: var(--vscode-button-foreground); align-self: flex-end; }
   .assistant { background: var(--vscode-editorWidget-background); align-self: flex-start; }
   .error { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); }
+  .verification-warning { background: var(--vscode-inputValidation-warningBackground); color: var(--vscode-inputValidation-warningForeground); border-left: 3px solid var(--vscode-editorWarning-foreground); padding: 8px 12px; border-radius: 4px; font-size: 0.9em; }
+  .verification-warning b { display: block; margin-bottom: 4px; }
+  .verification-warning code { font-size: 0.85em; display: block; margin-top: 4px; white-space: pre-wrap; max-height: 120px; overflow-y: auto; }
   code, pre { font-family: var(--vscode-editor-font-family); background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px; }
   pre { padding: 8px; overflow-x: auto; }
   #input-row { display: flex; gap: 8px; padding: 8px; border-top: 1px solid var(--vscode-panel-border); position: relative; }
@@ -266,6 +295,27 @@ export class ChatPanel {
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
     else if (msg.type === 'error') { addMsg('error', 'Error: ' + msg.message); currentAssistant = null; }
+    else if (msg.type === 'verification_warning') {
+      var el = document.createElement('div');
+      el.className = 'msg verification-warning';
+      var retryNote = msg.retried ? '<br><i>Anvil retried ' + msg.retries_used + ' time(s) after the initial attempt failed.</i>' : '';
+      el.innerHTML = '<b>Verification failed</b>' + retryNote +
+        msg.errors.map(function(e) { return escapeHtml(e); }).join('<br>') +
+        (msg.compiler_output ? '<code>Compiler: ' + escapeHtml(msg.compiler_output).substring(0, 500) + '</code>' : '') +
+        (msg.lint_output ? '<code>Lint: ' + escapeHtml(msg.lint_output).substring(0, 500) + '</code>' : '') +
+        (msg.test_output ? '<code>Tests: ' + escapeHtml(msg.test_output).substring(0, 500) + '</code>' : '');
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+    else if (msg.type === 'verification_passed_after_retry') {
+      var el = document.createElement('div');
+      el.className = 'msg verification-warning';
+      el.style.background = 'var(--vscode-terminal-ansiGreen, #d4edda)';
+      el.style.borderLeftColor = 'var(--vscode-terminal-ansiGreen, #28a745)';
+      el.innerHTML = '<b>Anvil checked its own work</b> — verification failed initially but passed after ' + msg.retries_used + ' retry attempt(s).';
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
     else if (msg.type === 'prefill') { inputEl.value = msg.text + ' '; inputEl.focus(); }
   });
 </script>

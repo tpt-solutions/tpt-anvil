@@ -18,6 +18,10 @@ pub struct RouterConfig {
     pub prefer_cheapest: bool,
     /// Maximum cost per request in USD. Requests exceeding this are rejected.
     pub max_cost_per_request_usd: Option<f64>,
+    /// Optional provider name to pin all requests to, bypassing cost-based
+    /// selection. When set, only the named provider is considered (if
+    /// available); when absent the full pool is evaluated.
+    pub pinned: Option<String>,
 }
 
 impl Default for RouterConfig {
@@ -26,6 +30,7 @@ impl Default for RouterConfig {
             enabled: false,
             prefer_cheapest: true,
             max_cost_per_request_usd: None,
+            pinned: None,
         }
     }
 }
@@ -51,14 +56,28 @@ pub fn select_provider<'a>(
         return providers.first();
     }
 
+    // When a provider is pinned, restrict the candidate set to only that one.
+    let effective: Vec<&ProviderEntry> = match &config.pinned {
+        Some(name) => providers.iter().filter(|e| e.name == *name).collect(),
+        None => providers.iter().collect(),
+    };
+
+    if effective.is_empty() {
+        info!(
+            "pinned provider '{}' not found in available pool; falling back",
+            config.pinned.as_deref().unwrap_or("")
+        );
+        return providers.first();
+    }
+
     let usage = TokenUsage {
         prompt_tokens: estimated_prompt_tokens,
         completion_tokens: estimated_completion_tokens,
         total_tokens: estimated_prompt_tokens + estimated_completion_tokens,
     };
 
-    let mut candidates: Vec<(&ProviderEntry, f64)> = providers
-        .iter()
+    let mut candidates: Vec<(&ProviderEntry, f64)> = effective
+        .into_iter()
         .filter_map(|entry| {
             let cost = estimate_cost(&entry.backend_kind, &entry.model_id, &usage)?;
             Some((entry, cost))
@@ -66,8 +85,9 @@ pub fn select_provider<'a>(
         .collect();
 
     if candidates.is_empty() {
-        // No cost data available (local backends); return first
-        return providers.first();
+        // No cost data available (local/custom backends); return first of
+        // the effective list, or first overall as a last resort.
+        return config.pinned.as_ref().and_then(|_| providers.first());
     }
 
     // Filter by cost cap
@@ -155,6 +175,7 @@ mod tests {
             enabled: true,
             prefer_cheapest: true,
             max_cost_per_request_usd: None,
+            pinned: None,
         };
         let selected = select_provider(&providers, 1000, 500, &config).unwrap();
         assert_eq!(selected.name, "cheap");
@@ -183,5 +204,55 @@ mod tests {
             ..Default::default()
         };
         assert!(select_provider(&[], 1000, 500, &config).is_none());
+    }
+
+    #[test]
+    fn pinned_provider_is_selected() {
+        let providers = vec![
+            ProviderEntry {
+                name: "cheap".into(),
+                provider: Arc::new(MockProvider {
+                    name: "cheap".into(),
+                }),
+                backend_kind: BackendKind::OpenRouter,
+                model_id: "deepseek/deepseek-coder".into(),
+            },
+            ProviderEntry {
+                name: "expensive".into(),
+                provider: Arc::new(MockProvider {
+                    name: "expensive".into(),
+                }),
+                backend_kind: BackendKind::OpenAi,
+                model_id: "gpt-4o".into(),
+            },
+        ];
+        let config = RouterConfig {
+            enabled: true,
+            prefer_cheapest: true,
+            max_cost_per_request_usd: None,
+            pinned: Some("expensive".into()),
+        };
+        let selected = select_provider(&providers, 1000, 500, &config).unwrap();
+        assert_eq!(selected.name, "expensive");
+    }
+
+    #[test]
+    fn pinned_to_unknown_falls_back() {
+        let providers = vec![ProviderEntry {
+            name: "only".into(),
+            provider: Arc::new(MockProvider {
+                name: "only".into(),
+            }),
+            backend_kind: BackendKind::OpenAi,
+            model_id: "gpt-4o".into(),
+        }];
+        let config = RouterConfig {
+            enabled: true,
+            prefer_cheapest: true,
+            max_cost_per_request_usd: None,
+            pinned: Some("nonexistent".into()),
+        };
+        let selected = select_provider(&providers, 1000, 500, &config).unwrap();
+        assert_eq!(selected.name, "only");
     }
 }

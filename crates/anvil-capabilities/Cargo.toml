@@ -23,3 +23,4 @@ tracing = { workspace = true }
 regex = { workspace = true }
 once_cell = { workspace = true }
 dirs = { workspace = true }
+toml = "0.8"

@@ -72,13 +72,29 @@ class AnvilChatPanel(private val project: Project) {
             htmlBuffer.clear()
             appendHtml("<p><b>Anvil:</b> ")
             try {
-                daemon.slashCommand(command, ctx, "main") { chunk ->
+                val result = daemon.slashCommand(command, ctx, "main") { chunk ->
                     SwingUtilities.invokeLater {
                         htmlBuffer.append(escapeHtml(chunk.delta))
                         updateChatDisplay()
                     }
                 }
                 appendHtml("</p>")
+                val verification = result.verification
+                if (verification != null && !verification.passed) {
+                    SwingUtilities.invokeLater {
+                        val errorText = verification.errors.joinToString("<br>") { escapeHtml(it) }
+                        val retryNote = if (verification.retried) "<br><i>Anvil retried ${verification.retries_used} time(s) after the initial attempt failed.</i>" else ""
+                        appendHtml("<div style='background:#fff3cd; border-left:3px solid #ffc107; padding:8px; margin:8px 0; border-radius:4px;'>" +
+                            "<b>Verification failed</b>$retryNote<br>$errorText</div>")
+                        updateChatDisplay()
+                    }
+                } else if (verification != null && verification.passed && verification.retried) {
+                    SwingUtilities.invokeLater {
+                        appendHtml("<div style='background:#d4edda; border-left:3px solid #28a745; padding:8px; margin:8px 0; border-radius:4px;'>" +
+                            "<b>Anvil checked its own work</b> — verification failed initially but passed after ${verification.retries_used} retry attempt(s).</div>")
+                        updateChatDisplay()
+                    }
+                }
             } catch (e: Exception) {
                 SwingUtilities.invokeLater {
                     appendHtml("</p><p style='color:red;'>Error: ${escapeHtml(e.message ?: "unknown")}</p>")
@@ -104,13 +120,29 @@ class AnvilChatPanel(private val project: Project) {
             htmlBuffer.clear()
             appendHtml("<p><b>Anvil:</b> ")
             try {
-                daemon.slashCommand(text, ctx, "main") { chunk ->
+                val result = daemon.slashCommand(text, ctx, "main") { chunk ->
                     SwingUtilities.invokeLater {
                         htmlBuffer.append(escapeHtml(chunk.delta))
                         updateChatDisplay()
                     }
                 }
                 appendHtml("</p>")
+                val verification = result.verification
+                if (verification != null && !verification.passed) {
+                    SwingUtilities.invokeLater {
+                        val errorText = verification.errors.joinToString("<br>") { escapeHtml(it) }
+                        val retryNote = if (verification.retried) "<br><i>Anvil retried ${verification.retries_used} time(s) after the initial attempt failed.</i>" else ""
+                        appendHtml("<div style='background:#fff3cd; border-left:3px solid #ffc107; padding:8px; margin:8px 0; border-radius:4px;'>" +
+                            "<b>Verification failed</b>$retryNote<br>$errorText</div>")
+                        updateChatDisplay()
+                    }
+                } else if (verification != null && verification.passed && verification.retried) {
+                    SwingUtilities.invokeLater {
+                        appendHtml("<div style='background:#d4edda; border-left:3px solid #28a745; padding:8px; margin:8px 0; border-radius:4px;'>" +
+                            "<b>Anvil checked its own work</b> — verification failed initially but passed after ${verification.retries_used} retry attempt(s).</div>")
+                        updateChatDisplay()
+                    }
+                }
             } catch (e: Exception) {
                 SwingUtilities.invokeLater {
                     appendHtml("</p><p style='color:red;'>Error: ${escapeHtml(e.message ?: "unknown")}</p>")

@@ -5,6 +5,13 @@ Config files are TOML. Two locations are checked (project overrides user):
 1. `~/.config/anvil/config.toml` — user-level
 2. `<project>/.anvil/config.toml` — project-level
 
+> **Security note:** Project-level config overrides user-level config.
+> A cloned untrusted repository could include `.anvil/config.toml` with
+> settings that redirect API keys or disable safety features (vault,
+> verification). User-level config is the safe default for secrets and
+> provider settings; project-level config should only contain
+> local-inference and indexing settings you trust.
+
 ## `[inference]`
 
 | Key | Type | Default | Description |
@@ -71,6 +78,15 @@ on CPU. The selected device is reported in the daemon logs at startup.
 | `base_url` | string | — | Base URL for OpenAI-compatible endpoint |
 | `model` | string | — | Model name |
 | `api_key_entry` | string | `"custom_api_key"` | OS keychain entry name |
+
+> **Trust boundary:** The `providers.custom.base_url` value is fully
+> user-controlled and may point at an internal network service (e.g.
+> `http://10.0.0.5/v1`). Any API key resolved from `api_key_entry` will be
+> sent to that endpoint over the network. Project-level `.anvil/config.toml`
+> can set this value — a cloned untrusted repository could redirect
+> API-key-bearing requests to an attacker-controlled server. Prefer
+> user-level config for cloud provider settings; use project-level config
+> only for local-inference settings you trust.
 
 ## `[indexing]`
 

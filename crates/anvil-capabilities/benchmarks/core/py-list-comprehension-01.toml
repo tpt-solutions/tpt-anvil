@@ -1,0 +1,20 @@
+id = "py-list-comprehension-01"
+description = "Refactor imperative loops to Pythonic list comprehensions"
+language = "python"
+kind = "lint"
+introduced_at = "2026-01-01"
+retires_at = "2026-07-01"
+scaffold_path = "scaffold/python"
+target_file = "utils.py"
+
+prompt = """
+Refactor `sum_list` to use `sum()` built-in, `is_palindrome` to be more
+efficient by comparing only half the string, and add a new function
+`flatten(nested_list)` that flattens a list of lists into a single list
+using a list comprehension. Output the complete corrected file.
+"""
+
+[verify_overrides]
+run_tests = false
+run_linter = true
+timeout_seconds = 30

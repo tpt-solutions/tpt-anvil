@@ -1,0 +1,21 @@
+id = "rust-iterator-01"
+description = "Replace imperative loop with iterator chain in Rust"
+language = "rust"
+kind = "lint"
+introduced_at = "2026-04-01"
+retires_at = "2026-10-01"
+scaffold_path = "scaffold/rust"
+target_file = "main.rs"
+
+prompt = """
+Refactor `is_even` and the `sum` calculation in main to use idiomatic
+Rust iterator chains. Add a new function `evens` that takes a slice of
+i32 and returns a Vec<i32> containing only the even numbers, implemented
+using iterator methods (filter + collect). Output the complete corrected
+file.
+"""
+
+[verify_overrides]
+run_tests = false
+run_linter = true
+timeout_seconds = 30

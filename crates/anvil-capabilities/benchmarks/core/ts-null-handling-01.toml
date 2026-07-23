@@ -1,0 +1,24 @@
+id = "ts-null-handling-01"
+description = "Fix TypeScript null/undefined handling in array operations"
+language = "typescript"
+kind = "compiler"
+introduced_at = "2026-01-01"
+retires_at = "2026-07-01"
+scaffold_path = "scaffold/typescript"
+target_file = "utils.ts"
+
+prompt = """
+The `findMax` function returns `null` for an empty array but the type
+signature does not communicate this to callers properly. Also the
+`capitalize` function does not handle empty strings. Fix both functions:
+1. Make `findMax` return `undefined` instead of `null` (more idiomatic TS)
+2. Make `capitalize` return empty string for empty input
+3. Add a new `filterPositive` function that takes number[] and returns
+   only positive numbers
+Output the complete corrected file.
+"""
+
+[verify_overrides]
+run_tests = false
+run_linter = true
+timeout_seconds = 30

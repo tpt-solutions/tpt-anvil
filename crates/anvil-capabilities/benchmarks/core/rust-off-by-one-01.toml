@@ -1,0 +1,21 @@
+id = "rust-off-by-one-01"
+description = "Fix an off-by-one error in array slicing"
+language = "rust"
+kind = "compiler"
+introduced_at = "2026-04-01"
+retires_at = "2026-10-01"
+scaffold_path = "scaffold/rust"
+target_file = "main.rs"
+
+prompt = """
+The function `second_half` is supposed to return the second half of a
+slice but it has an off-by-one error — it uses `len()/2` as the start
+index but should handle odd lengths correctly. Fix the function so that
+`second_half(&[1,2,3,4,5])` returns `[3,4,5]` and `second_half(&[1,2,3,4])`
+returns `[3,4]`. Output the complete corrected file.
+"""
+
+[verify_overrides]
+run_tests = false
+run_linter = false
+timeout_seconds = 30

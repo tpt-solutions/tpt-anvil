@@ -41,6 +41,12 @@ pub struct VerificationResult {
     pub test_output: Option<String>,
     pub lint_output: Option<String>,
     pub errors: Vec<String>,
+    /// Number of retry attempts that were made after the initial attempt.
+    #[serde(default)]
+    pub retries_used: u32,
+    /// Maximum retries configured (from `VerifyConfig::max_retries`).
+    #[serde(default)]
+    pub max_retries: u32,
 }
 
 /// Determine the language of a file based on its extension.
@@ -135,10 +141,19 @@ async fn run_command(cmd: &str, args: &[String], cwd: &Path, timeout: Duration) 
 /// that resolve outside the root). `file_path` comes from client-supplied
 /// `CodeContext` over the IPC channel and must never be trusted directly for
 /// filesystem writes.
-async fn resolve_target(project_root: &Path, file_path: &str) -> Result<std::path::PathBuf, String> {
+async fn resolve_target(
+    project_root: &Path,
+    file_path: &str,
+) -> Result<std::path::PathBuf, String> {
     let requested = Path::new(file_path);
-    if requested.is_absolute() || requested.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-        return Err(format!("rejected file path outside project root: {file_path}"));
+    if requested.is_absolute()
+        || requested
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "rejected file path outside project root: {file_path}"
+        ));
     }
 
     let canonical_root = tokio::fs::canonicalize(project_root)
@@ -163,7 +178,9 @@ async fn resolve_target(project_root: &Path, file_path: &str) -> Result<std::pat
     };
 
     if !canonical_check.starts_with(&canonical_root) {
-        return Err(format!("rejected file path outside project root: {file_path}"));
+        return Err(format!(
+            "rejected file path outside project root: {file_path}"
+        ));
     }
 
     Ok(target)
@@ -189,6 +206,8 @@ pub async fn verify_patch(
             test_output: None,
             lint_output: None,
             errors: vec![],
+            retries_used: 0,
+            max_retries: 0,
         };
     }
 
@@ -200,6 +219,8 @@ pub async fn verify_patch(
         test_output: None,
         lint_output: None,
         errors: vec![],
+        retries_used: 0,
+        max_retries: 0,
     };
 
     // `file_path` originates from client-supplied `CodeContext` over the IPC
@@ -309,7 +330,9 @@ mod tests {
     #[tokio::test]
     async fn resolve_target_rejects_parent_traversal() {
         let root = std::env::temp_dir();
-        let err = resolve_target(&root, "../../../etc/passwd").await.unwrap_err();
+        let err = resolve_target(&root, "../../../etc/passwd")
+            .await
+            .unwrap_err();
         assert!(err.contains("outside project root"));
     }
 

@@ -11,6 +11,11 @@ repository.workspace = true
 name = "anvil"
 path = "src/main.rs"
 
+[features]
+cuda = []
+rocm = []
+webgpu = []
+
 [dependencies]
 anvil-core = { path = "../anvil-core" }
 anvil-config = { path = "../anvil-config" }
@@ -30,6 +35,8 @@ tracing-subscriber = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 dirs = { workspace = true }
 rand = "0.8"
+subtle = "2"
+reqwest = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

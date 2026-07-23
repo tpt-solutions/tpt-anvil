@@ -92,68 +92,66 @@ fn model_id_for(name: &str, cfg: &ProviderConfig) -> String {
 fn build_provider(name: &str, cfg: &ProviderConfig) -> Result<Arc<dyn CloudProvider>> {
     let provider: Arc<dyn CloudProvider> = match name {
         "openai" => {
-                let entry = cfg
-                    .openai_api_key_entry
-                    .as_deref()
-                    .unwrap_or("openai_api_key");
-                let key = keystore::get_api_key(entry)?;
-                if cfg.openai_model.is_empty() {
-                    return Err(ProviderError::Config(
+            let entry = cfg
+                .openai_api_key_entry
+                .as_deref()
+                .unwrap_or("openai_api_key");
+            let key = keystore::get_api_key(entry)?;
+            if cfg.openai_model.is_empty() {
+                return Err(ProviderError::Config(
                         "providers.openai.model is not set — model names change too often to hardcode a default; pick one from https://platform.openai.com/docs/models".into(),
                     ));
-                }
-                Arc::new(OpenAiProvider::new(key, cfg.openai_model.clone())?)
             }
-            "anthropic" => {
-                let entry = cfg
-                    .anthropic_api_key_entry
-                    .as_deref()
-                    .unwrap_or("anthropic_api_key");
-                let key = keystore::get_api_key(entry)?;
-                if cfg.anthropic_model.is_empty() {
-                    return Err(ProviderError::Config(
+            Arc::new(OpenAiProvider::new(key, cfg.openai_model.clone())?)
+        }
+        "anthropic" => {
+            let entry = cfg
+                .anthropic_api_key_entry
+                .as_deref()
+                .unwrap_or("anthropic_api_key");
+            let key = keystore::get_api_key(entry)?;
+            if cfg.anthropic_model.is_empty() {
+                return Err(ProviderError::Config(
                         "providers.anthropic.model is not set — model names change too often to hardcode a default; pick one from https://docs.anthropic.com/en/docs/about-claude/models".into(),
                     ));
-                }
-                Arc::new(AnthropicProvider::new(key, &cfg.anthropic_model)?)
             }
-            "openrouter" => {
-                let entry = cfg
-                    .openrouter_api_key_entry
-                    .as_deref()
-                    .unwrap_or("openrouter_api_key");
-                let key = keystore::get_api_key(entry)?;
-                Arc::new(OpenRouterProvider::new(key, &cfg.openrouter_model)?)
-            }
-            "azure" => {
-                let entry = cfg
-                    .azure_api_key_entry
-                    .as_deref()
-                    .unwrap_or("azure_api_key");
-                let key = keystore::get_api_key(entry)?;
-                let endpoint = cfg.azure_endpoint.as_deref().ok_or_else(|| {
-                    ProviderError::Config("azure provider requires providers.azure.endpoint".into())
-                })?;
-                Arc::new(AzureOpenAiProvider::new(
-                    key,
-                    endpoint,
-                    &cfg.azure_api_version,
-                )?)
-            }
-            "custom" => {
-                let entry = cfg
-                    .custom_api_key_entry
-                    .as_deref()
-                    .unwrap_or("custom_api_key");
-                let key = keystore::get_api_key(entry).unwrap_or_default();
-                let base_url = cfg.custom_base_url.as_deref().ok_or_else(|| {
-                    ProviderError::Config(
-                        "custom provider requires providers.custom.base_url".into(),
-                    )
-                })?;
-                let model = cfg.custom_model.as_deref().unwrap_or("").to_string();
-                Arc::new(CustomProvider::new(key, model, base_url)?)
-            }
+            Arc::new(AnthropicProvider::new(key, &cfg.anthropic_model)?)
+        }
+        "openrouter" => {
+            let entry = cfg
+                .openrouter_api_key_entry
+                .as_deref()
+                .unwrap_or("openrouter_api_key");
+            let key = keystore::get_api_key(entry)?;
+            Arc::new(OpenRouterProvider::new(key, &cfg.openrouter_model)?)
+        }
+        "azure" => {
+            let entry = cfg
+                .azure_api_key_entry
+                .as_deref()
+                .unwrap_or("azure_api_key");
+            let key = keystore::get_api_key(entry)?;
+            let endpoint = cfg.azure_endpoint.as_deref().ok_or_else(|| {
+                ProviderError::Config("azure provider requires providers.azure.endpoint".into())
+            })?;
+            Arc::new(AzureOpenAiProvider::new(
+                key,
+                endpoint,
+                &cfg.azure_api_version,
+            )?)
+        }
+        "custom" => {
+            let entry = cfg
+                .custom_api_key_entry
+                .as_deref()
+                .unwrap_or("custom_api_key");
+            let key = keystore::get_api_key(entry).unwrap_or_default();
+            let base_url = cfg.custom_base_url.as_deref().ok_or_else(|| {
+                ProviderError::Config("custom provider requires providers.custom.base_url".into())
+            })?;
+            let model = cfg.custom_model.as_deref().unwrap_or("").to_string();
+            Arc::new(CustomProvider::new(key, model, base_url)?)
+        }
         other => {
             return Err(ProviderError::Config(format!("unknown provider '{other}'")));
         }

@@ -27,14 +27,27 @@ async fn main() -> Result<()> {
         Commands::Stop => {
             pid::send_stop()?;
         }
-        Commands::Status => {
-            pid::print_status();
+        Commands::Status { cost } => {
+            if cost {
+                cli::show_cost_summary().await?;
+            } else {
+                pid::print_status();
+            }
         }
         Commands::Auth(auth_cmd) => {
             cli::handle_auth(auth_cmd)?;
         }
         Commands::Models => {
             cli::list_models().await?;
+        }
+        Commands::Init { project } => {
+            cli::run_init(project)?;
+        }
+        Commands::Doctor { fix } => {
+            cli::run_doctor(fix).await?;
+        }
+        Commands::Benchmark(args) => {
+            cli::handle_benchmark(args.command, None).await?;
         }
     }
 
