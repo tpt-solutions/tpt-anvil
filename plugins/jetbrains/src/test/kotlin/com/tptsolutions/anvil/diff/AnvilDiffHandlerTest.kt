@@ -55,8 +55,8 @@ class AnvilDiffHandlerTest {
     @Test
     fun preservesLinesAfterHunk() {
         val original = "a\nb\nc\nd"
-        val diff = "@@ -1,2 +1,2 @@\n-a\n+b\n c"
-        assertEquals("b\nc\nd", applyDiff(original, diff))
+        val diff = "@@ -1,2 +1,2 @@\n-a\n+x\n b"
+        assertEquals("x\nb\nc\nd", applyDiff(original, diff))
     }
 
     @Test
@@ -83,16 +83,7 @@ class AnvilDiffHandlerTest {
     @Test
     fun handlesMultipleHunks() {
         val original = "a\nb\nc\nd\ne"
-        val diff = """
-            @@ -1,2 +1,2 @@
-            a
-            -b
-            +B
-            @@ -4,2 +4,2 @@
-            d
-            -e
-            +E
-        """.trimIndent()
+        val diff = "@@ -1,2 +1,2 @@\n a\n-b\n+B\n@@ -4,2 +4,2 @@\n d\n-e\n+E"
         assertEquals("a\nB\nc\nd\nE", applyDiff(original, diff))
     }
 

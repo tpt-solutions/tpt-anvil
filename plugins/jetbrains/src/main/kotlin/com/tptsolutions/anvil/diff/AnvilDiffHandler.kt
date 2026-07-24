@@ -44,7 +44,7 @@ object AnvilDiffHandler {
     }
 
     private fun applyUnifiedDiff(original: String, diff: String): String? {
-        val originalLines = original.lines()
+        val originalLines = if (original.isEmpty()) emptyList() else original.lines()
         val diffLines = diff.lines()
         val result = mutableListOf<String>()
         var origCursor = 0

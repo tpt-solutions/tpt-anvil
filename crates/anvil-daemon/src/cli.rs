@@ -469,12 +469,8 @@ pub async fn handle_benchmark(cmd: BenchmarkCommands, project_root: Option<&str>
         } => run_benchmark(&target, no_adaptive, project.as_deref().or(project_root)).await,
         BenchmarkCommands::Report { compare } => show_benchmark_report(&compare).await,
     }
-        } => run_benchmark(&target, no_adaptive, project.as_deref().or(project_root)).await,
-        BenchmarkCommands::Report { compare } => show_benchmark_report(&compare).await,
-    }
 }
 
-async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&str>) -> Result<()> {
 async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&str>) -> Result<()> {
     use anvil_capabilities::benchmark::load_builtin_tasks;
     use anvil_capabilities::benchmark::runner::{core_score, grade_task};
@@ -489,17 +485,11 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
             "target must be in the form `provider/model` (e.g. `ollama/deepseek-coder:6.7b`)"
         )
     })?;
-    let (provider_name, model_id) = target.split_once('/').ok_or_else(|| {
-        anyhow::anyhow!(
-            "target must be in the form `provider/model` (e.g. `ollama/deepseek-coder:6.7b`)"
-        )
-    })?;
 
     // Load config and build the provider for the given name
     let cfg = anvil_config::loader::ConfigLoader::load(project_root.map(std::path::Path::new))
-    let cfg = anvil_config::loader::ConfigLoader::load(project_root.map(std::path::Path::new))
         .map_err(|e| anyhow::anyhow!("failed to load config: {e}"))?;
-    let provider_cfg = crate::server::to_provider_config(&cfg);
+    let provider_cfg = to_provider_config(&cfg);
     let registry = ProviderRegistry::from_config(&provider_cfg)
         .map_err(|e| anyhow::anyhow!("failed to build provider registry: {e}"))?;
 
@@ -525,9 +515,6 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
     let proj = project_root
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    let proj = project_root
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
     let verify_config = VerifyConfig {
         enabled: cfg.verify.enabled,
@@ -535,13 +522,8 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
         run_linter: cfg.verify.run_linter,
         timeout_seconds: cfg.verify.timeout_seconds,
         max_retries: cfg.verify.max_retries,
-        max_retries: cfg.verify.max_retries,
     };
 
-    println!(
-        "Running {} benchmark tasks against {target}...\n",
-        tasks.len()
-    );
     println!(
         "Running {} benchmark tasks against {target}...\n",
         tasks.len()
@@ -570,17 +552,6 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
 
         match output {
             Ok(response) => {
-                let task_result = grade_task(task, &response.content, &proj, &verify_config).await;
-                let cost = response.usage.as_ref().and_then(|u| {
-                    let backend = match provider_name {
-                        "openai" => tpt_anvil_providers::types::BackendKind::OpenAi,
-                        "anthropic" => tpt_anvil_providers::types::BackendKind::Anthropic,
-                        "openrouter" => tpt_anvil_providers::types::BackendKind::OpenRouter,
-                        "azure" => tpt_anvil_providers::types::BackendKind::AzureOpenAi,
-                        _ => tpt_anvil_providers::types::BackendKind::OpenAiCompatible,
-                    };
-                    tpt_anvil_providers::cost::estimate_cost(&backend, model_id, u)
-                });
                 let task_result = grade_task(task, &response.content, &proj, &verify_config).await;
                 let cost = response.usage.as_ref().and_then(|u| {
                     let backend = match provider_name {
@@ -648,10 +619,6 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
         "\nBenchmark complete: {:.0}% ({target}) at {now}",
         score * 100.0
     );
-    println!(
-        "\nBenchmark complete: {:.0}% ({target}) at {now}",
-        score * 100.0
-    );
     if total_cost > 0.0 {
         println!("Estimated cost: ${total_cost:.4}");
     }
@@ -686,14 +653,12 @@ async fn show_benchmark_report(targets: &[String]) -> Result<()> {
                 let adaptive = entry
                     .adaptive_score
                     .map(|s| format!("{:.0}%", s * 100.0))
-                    .map(|s| format!("{:.0}%", s * 100.0))
                     .unwrap_or_else(|| "-".into());
                 let cost = if entry.total_cost_usd > 0.0 {
                     format!("${:.4}", entry.total_cost_usd)
                 } else {
                     "-".into()
                 };
-                let core = format!("{:.0}%", entry.core_score * 100.0);
                 println!(
                     "{:<15} {:<25} {:>8.0}% {:>8} {:>10}",
                     entry.provider,
@@ -703,9 +668,6 @@ async fn show_benchmark_report(targets: &[String]) -> Result<()> {
                     cost
                 );
             }
-            println!(
-                "\nRun `anvil benchmark report <provider1/model1> <provider2/model2>` to compare."
-            );
             println!(
                 "\nRun `anvil benchmark report <provider1/model1> <provider2/model2>` to compare."
             );
@@ -721,24 +683,17 @@ async fn show_benchmark_report(targets: &[String]) -> Result<()> {
                 .find(&right_provider, &right_model)
                 .ok_or_else(|| anyhow::anyhow!("no scorecard found for {}", targets[1]))?;
 
-            let cmp = compare_scorecards(left, right);
+            let cmp = compare(left, right);
 
             println!("Benchmark Comparison\n");
-            println!("  {:<25} vs {:<25}", cmp.left_label, cmp.right_label);
             println!("  {:<25} vs {:<25}", cmp.left_label, cmp.right_label);
             println!("  Shared tasks: {}\n", cmp.shared_task_ids.len());
             println!(
                 "  {:<25} {:.0}%",
                 cmp.left_label,
                 cmp.left_shared_score * 100.0
-                "  {:<25} {:.0}%",
-                cmp.left_label,
-                cmp.left_shared_score * 100.0
             );
             println!(
-                "  {:<25} {:.0}%",
-                cmp.right_label,
-                cmp.right_shared_score * 100.0
                 "  {:<25} {:.0}%",
                 cmp.right_label,
                 cmp.right_shared_score * 100.0
