@@ -13,9 +13,41 @@ fn pid_path() -> PathBuf {
         .join("anvil.pid")
 }
 
+fn is_pid_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        unsafe { libc::kill(pid as i32, 0) == 0 }
+    }
+    #[cfg(windows)]
+    {
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .output()
+            .map(|o| {
+                let out = String::from_utf8_lossy(&o.stdout);
+                !out.contains("No tasks")
+            })
+            .unwrap_or(true)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = pid;
+        true
+    }
+}
+
 pub fn write_pid() -> Result<()> {
     let path = pid_path();
     std::fs::create_dir_all(path.parent().unwrap())?;
+
+    // If a PID file exists with a different PID that is no longer running,
+    // it is stale — remove it before writing our own.
+    if let Some(existing) = read_pid() {
+        if existing != std::process::id() && !is_pid_alive(existing) {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
     std::fs::write(&path, std::process::id().to_string())?;
     Ok(())
 }

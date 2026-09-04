@@ -1,0 +1,19 @@
+id = "rust-borrow-checker-01"
+description = "Fix a borrow checker error in a Rust iterator loop"
+language = "rust"
+kind = "compiler"
+introduced_at = "2026-01-01"
+retires_at = "2026-07-01"
+scaffold_path = "scaffold/rust"
+target_file = "main.rs"
+
+prompt = """
+Fix the borrow checker error in main.rs. The code tries to iterate over
+`values` and also modify it inside the loop. Restructure the code so it
+compiles successfully. Output the complete corrected file.
+"""
+
+[verify_overrides]
+run_tests = false
+run_linter = false
+timeout_seconds = 30

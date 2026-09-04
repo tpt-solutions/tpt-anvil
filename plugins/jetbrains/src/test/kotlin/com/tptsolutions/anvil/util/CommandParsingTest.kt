@@ -48,4 +48,60 @@ class CommandParsingTest {
     fun returnsNullWhenNoCodeBlock() {
         assertNull(CommandParsing.extractCodeBlock("no code here"))
     }
+
+    @Test
+    fun extractsMultilineCodeBlock() {
+        val text = """
+            |Here is the solution:
+            |```rust
+            |fn main() {
+            |    println!("hello");
+            |}
+            |```
+            |Let me know if you have questions.
+        """.trimMargin()
+        val expected = "fn main() {\n    println!(\"hello\");\n}"
+        assertEquals(expected, CommandParsing.extractCodeBlock(text))
+    }
+
+    @Test
+    fun extractCodeBlockHandlesEmptyInput() {
+        assertNull(CommandParsing.extractCodeBlock(""))
+    }
+
+    @Test
+    fun extractCodeBlockHandlesVeryLongInput() {
+        val longCode = "x".repeat(50_000)
+        val text = "start\n```\n$longCode\n```\nend"
+        assertEquals(longCode, CommandParsing.extractCodeBlock(text))
+    }
+
+    @Test
+    fun extractCodeBlockHandlesNestedFences() {
+        val text = "doc\n```\nouter\n```inside\nmore\n```\nend"
+        // Should extract from the first fence to the second fence
+        val result = CommandParsing.extractCodeBlock(text)
+        assertTrue(result != null, "should extract from nested fences")
+        assertTrue(result!!.contains("outer"), "should contain outer content")
+    }
+
+    @Test
+    fun parseHandlesEmptyInput() {
+        assertEquals("/chat" to "", CommandParsing.parse(""))
+    }
+
+    @Test
+    fun parseHandlesWhitespaceOnlyInput() {
+        assertEquals("/chat" to "", CommandParsing.parse("   "))
+    }
+
+    @Test
+    fun isSlashCommandRejectsEmptyString() {
+        assertFalse(CommandParsing.isSlashCommand(""))
+    }
+
+    @Test
+    fun isSlashCommandRejectsWhitespaceOnly() {
+        assertFalse(CommandParsing.isSlashCommand("   "))
+    }
 }
