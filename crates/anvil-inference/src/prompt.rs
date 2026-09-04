@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-use anvil_core::types::{ChatMessage, Role};
+use anvil_core::types::{ChatMessage, CompletionRequest, Role};
 
 /// Format a message list into a raw prompt string for models that don't accept chat format.
 pub fn format_prompt(messages: &[ChatMessage], template: PromptTemplate) -> String {
@@ -87,6 +87,14 @@ fn format_alpaca(messages: &[ChatMessage]) -> String {
     } else {
         format!("{system}\n\n### Instruction:\n{instruction}\n\n### Response:\n")
     }
+}
+
+/// Build a single prompt string from a `CompletionRequest`, auto-detecting
+/// the appropriate chat template from the model name.
+pub fn apply_chat_template(request: &CompletionRequest) -> String {
+    let model_id = request.model.as_deref().unwrap_or("deepseek-coder:6.7b");
+    let template = PromptTemplate::from_model_id(model_id);
+    format_prompt(&request.messages, template)
 }
 
 #[cfg(test)]
