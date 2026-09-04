@@ -20,7 +20,18 @@ data class StatusResponse(
     val index_status: String,
 )
 
-data class SlashCommandResult(val content: String)
+data class SlashCommandResult(val content: String, val verification: VerificationResult?)
+
+data class VerificationResult(
+    val passed: Boolean,
+    val errors: List<String>,
+    val compiler_output: String?,
+    val lint_output: String?,
+    val test_output: String?,
+    val retries_used: Int,
+    val max_retries: Int,
+    val retried: Boolean,
+)
 
 data class StreamChunk(val id: Long, val delta: String, val done: Boolean)
 
@@ -108,7 +119,20 @@ class DaemonClient {
         val result = deferred.await()
         streamListeners.remove(id)
         val obj = gson.fromJson(gson.toJson(result), JsonObject::class.java)
-        return SlashCommandResult(obj.get("content").asString)
+        val verification = if (obj.has("verification") && !obj.get("verification").isJsonNull) {
+            val vObj = obj.getAsJsonObject("verification")
+            VerificationResult(
+                passed = vObj.get("passed").asBoolean,
+                errors = vObj.getAsJsonArray("errors")?.map { it.asString } ?: emptyList(),
+                compiler_output = vObj.get("compiler_output")?.takeIf { !it.isJsonNull }?.asString,
+                lint_output = vObj.get("lint_output")?.takeIf { !it.isJsonNull }?.asString,
+                test_output = vObj.get("test_output")?.takeIf { !it.isJsonNull }?.asString,
+                retries_used = vObj.get("retries_used")?.asInt ?: 0,
+                max_retries = vObj.get("max_retries")?.asInt ?: 0,
+                retried = vObj.get("retried")?.asBoolean ?: false,
+            )
+        } else null
+        return SlashCommandResult(obj.get("content").asString, verification)
     }
 }
 

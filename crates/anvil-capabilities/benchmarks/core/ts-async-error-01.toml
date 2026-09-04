@@ -1,0 +1,23 @@
+id = "ts-async-error-01"
+description = "Add proper error handling to an async TypeScript function"
+language = "typescript"
+kind = "compiler"
+introduced_at = "2026-04-01"
+retires_at = "2026-10-01"
+scaffold_path = "scaffold/typescript"
+target_file = "utils.ts"
+
+prompt = """
+Add a new `fetchJson<T>(url: string): Promise<T>` function to utils.ts
+that:
+1. Uses `fetch` with a 5-second timeout via `AbortController`
+2. Throws a descriptive error if the response is not ok
+3. Parses the response as JSON
+4. Handles network errors gracefully
+Use proper TypeScript error types. Output the complete corrected file.
+"""
+
+[verify_overrides]
+run_tests = false
+run_linter = true
+timeout_seconds = 30
