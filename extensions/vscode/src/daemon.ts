@@ -20,6 +20,17 @@ export interface StreamToken {
     done: boolean;
 }
 
+export interface VerificationResult {
+    passed: boolean;
+    errors: string[];
+    compiler_output?: string;
+    lint_output?: string;
+    test_output?: string;
+    retries_used: number;
+    max_retries: number;
+    retried: boolean;
+}
+
 type StatusChangeListener = (connected: boolean) => void;
 
 export class DaemonClient {
@@ -126,7 +137,7 @@ export class DaemonClient {
         context: CodeContext,
         conversationId?: string,
         onToken?: (chunk: StreamToken) => void,
-    ): Promise<{ content: string }> {
+    ): Promise<{ content: string; verification?: VerificationResult }> {
         const id = ++this.requestId;
         const params = { command, context, conversation_id: conversationId ?? null };
         const msg = JSON.stringify({ jsonrpc: '2.0', id, method: 'slash_command', params }) + '\n';
@@ -139,7 +150,7 @@ export class DaemonClient {
             this.pending.set(id, {
                 resolve: (v) => {
                     this.streamListeners.delete(id);
-                    resolve(v as { content: string });
+                    resolve(v as { content: string; verification?: VerificationResult });
                 },
                 reject: (e) => {
                     this.streamListeners.delete(id);

@@ -4,8 +4,8 @@ members = [
     "crates/anvil-core",
     "crates/anvil-config",
     "crates/anvil-inference",
-    "crates/anvil-providers",
-    "crates/anvil-indexer",
+    "crates/tpt-anvil-providers",
+    "crates/tpt-anvil-indexer",
     "crates/anvil-capabilities",
     "crates/anvil-daemon",
 ]
@@ -39,6 +39,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # HTTP client
 reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Pattern matching
+regex = "1"
+once_cell = "1"
 
 # Async traits
 async-trait = "0.1"
