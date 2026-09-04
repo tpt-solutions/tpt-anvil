@@ -1,0 +1,181 @@
+Design Document: TPT AI Agent
+Project: TPT AI Agent (Path B)
+Author: TPT Solutions
+Date: July 23, 2026
+Status: Draft / RFC
+Target Stack: TypeScript (VS Code Extension), Rust/Go (Local Backend Daemon), tpt-telos, tpt-code-command-center
+
+1. Executive Summary
+TPT AI Agent is a next-generation, VS Code-native AI coding assistant designed to handle whole-project development effortlessly. Unlike subsidized, token-heavy agents (e.g., Cline, Blackbox), TPT AI Agent operates strictly on a Bring Your Own Key (BYOK) model. It achieves superior performance and lower costs by acting as an intelligent orchestration layer that hooks directly into tpt-code-command-center for context optimization and routing, and tpt-telos for formal, pre-application verification of AI-generated code.
+Core Value Proposition: Maximum intelligence per dollar, zero-trust security, and mathematically verifiable code correctness, leveraging the existing 137-repo TPT open-source ecosystem as a local knowledge base.
+2. Core Design Principles
+BYOK & Cost Optimization: Never subsidize LLM costs. Instead, aggressively reduce user token usage via AST-based context compression (TPT Smart Context) and native provider caching (TPT Prompt Cache).
+Verification-First Execution: AI output is untrusted by default. All proposed code changes must pass a lightweight tpt-telos contract check (requires/ensures) before being presented to the user.
+Whole-Project Awareness: The agent does not blindly read files. It builds and queries a local, Tree-sitter-powered dependency graph and vector index of the workspace.
+Ecosystem Leverage: The agent can optionally index the user’s local clone of the tpt-solutions GitHub org (137 repos) to provide highly accurate, style-consistent RAG (Retrieval-Augmented Generation) for boilerplate and architectural patterns.
+3. System Architecture
+The system is split into two decoupled components communicating via local JSON-RPC over stdin/stdout (or a localhost WebSocket for advanced debugging).
+3.1 Component 1: VS Code Extension (Frontend)
+Language: TypeScript / React (or Svelte) Webview.
+Responsibilities:
+Render the Chat UI, Planner (step-by-step agent thoughts), and Diff Viewer.
+Manage VS Code workspace APIs (reading file paths, applying TPT Silent Edit diffs).
+Handle user BYOK credential storage (securely via VS Code Secrets API).
+3.2 Component 2: TPT Local Daemon (Backend)
+Language: Rust (preferred for Tree-sitter parsing and SMT/Telos integration) or Go (for high-concurrency routing).
+Responsibilities:
+Workspace Indexer: Builds a local graph of structs, functions, and dependencies using Tree-sitter.
+Context Engine: Intercepts LLM prompts, replaces large files with AST outlines via tpt-code-command-center.
+Router & Vault: Strips secrets (TPT Vault) and routes requests to the optimal BYOK provider (TPT Router).
+Telos Verifier: Executes tpt-telos SMT-style checks on AI-generated code blocks before returning them to the frontend.
+4. The "Whole Project" Agentic Loop
+When a user submits a complex prompt (e.g., "Refactor the database connection pooling in the auth service and add retry logic"), the agent executes the following loop:
+Plan & Index Query: The Agent breaks the task into steps. It queries the local Workspace Indexer to identify the exact files and functions involved (e.g., auth/db_pool.go), avoiding blind directory reads.
+Context Compression: The Daemon retrieves the identified files and passes them through TPT Smart Context. Only function signatures, interfaces, and relevant comments are retained. Token usage is reduced by ~60-80%.
+Secure Generation: The compressed context and prompt are sanitized by TPT Vault and routed via TPT Router to the user's configured LLM (e.g., Claude 3.5 Sonnet via Anthropic API).
+Telos Verification (The Gatekeeper):
+The LLM returns proposed code.
+The Daemon extracts the code and runs it through tpt-telos.
+Check: Does the new code violate any existing requires preconditions? Does it satisfy the ensures postconditions? Are there unhandled error states?
+If Fail: The Daemon silently feeds the Telos error report back to the LLM: "Your solution violated contract X. Revise." (Auto-retry up to 2 times).
+If Pass: The code is deemed safe.
+Silent Application: The Daemon returns the verified code to the VS Code Extension, which renders it as a native, side-by-side diff using TPT Silent Edit. The user clicks "Accept" or "Reject".
+5. JSON-RPC API Schema (Frontend ↔ Backend)
+This strict contract ensures the TypeScript frontend and Rust/Go backend remain decoupled and testable.
+
+// 1. Initialize Workspace (Called on VS Code startup)
+{
+  "jsonrpc": "2.0",
+  "method": "workspace.initialize",
+  "params": {
+    "root_path": "/path/to/project",
+    "enable_tpt_org_rag": true, // Optional: Index local tpt-solutions repos
+    "api_keys": { "anthropic": "...", "openrouter": "..." }
+  }
+}
+
+// 2. Query Context (Agent asks backend for relevant code)
+{
+  "jsonrpc": "2.0",
+  "method": "context.query",
+  "params": {
+    "query": "database connection pooling and retry logic",
+    "max_tokens": 2000
+  }
+}
+// Response: Returns AST-compressed snippets, not raw files.
+
+// 3. Generate and Verify (The core agentic step)
+{
+  "jsonrpc": "2.0",
+  "method": "agent.generate_and_verify",
+  "params": {
+    "prompt": "Refactor this to use pgxpool with exponential backoff.",
+    "context": "<AST-compressed code from step 2>",
+    "telos_contracts": ["requires: db != nil", "ensures: err == nil || retry_count < 3"]
+  }
+}
+// Response: Returns verified code, or a Telos failure report for self-correction.
+
+// 4. Apply Edit (Frontend requests backend to format the diff)
+{
+  "jsonrpc": "2.0",
+  "method": "edit.prepare_silent",
+  "params": {
+    "file_path": "/path/to/project/auth/db.go",
+    "new_code": "..."
+  }
+}
+// Response: Returns a unified diff or VS Code WorkspaceEdit payload.
+
+6. Phased Implementation Plan ($0 Budget)
+Phase 1: The "Smart Proxy" MVP (Weeks 1-3)
+Goal: Prove the cost-saving and security value without building a full agent.
+Tasks:
+Build the VS Code Extension UI (simple chat).
+Implement the Rust/Go Daemon that only handles context.query (Tree-sitter AST compression) and api.proxy (Vault + Router).
+Deliverable: A working VS Code extension where users can chat, and the backend proves it reduced token usage by 50%+ compared to raw file reading.
+Phase 2: The Telos Integration (Weeks 4-6)
+Goal: Introduce the verification-first differentiator.
+Tasks:
+Integrate tpt-telos into the Daemon's generate_and_verify loop.
+Implement the auto-retry mechanism when Telos detects a contract violation.
+Deliverable: An agent that actively refuses to output buggy code, displaying Telos error messages to the user to build trust.
+Phase 3: Whole-Project Autonomy & TPT RAG (Weeks 7-10)
+Goal: Enable complex, multi-file refactoring.
+Tasks:
+Build the local Vector/Graph database for the workspace.
+Add the optional tpt-solutions org indexer, allowing the agent to pull proven patterns from your 137 repos.
+Implement TPT Silent Edit for seamless VS Code diff application.
+Deliverable: V1.0 Release of TPT AI Agent.
+7. Risks & Mitigations
+Risk
+Impact
+Mitigation
+Local Indexing Performance
+High (Slow UI on large repos)
+Use Rust + Tree-sitter for incremental parsing. Only index on file save, not on every keystroke.
+Telos False Positives
+Medium (Agent gets stuck in retry loop)
+Implement a strict retry limit (e.g., 2 attempts). If it fails, present the best attempt to the user with a clear "Telos Warning" badge, letting the human decide.
+User Setup Friction
+High (BYOK requires user effort)
+Provide a 1-click "Get Started" wizard in VS Code that guides the user to paste an OpenRouter or Anthropic key, with a pre-configured, cost-optimized router profile.
+
+
+
+What is "TPT Silent Edit"?
+It is the mechanism by which the AI applies proposed code changes to the user's editor non-destructively and reviewably.
+Instead of the AI aggressively overwriting files in the background (which causes jarring UI jumps, breaks undo history, and creates merge conflicts), "Silent Edit" generates a clean, native VS Code WorkspaceEdit or unified diff. It presents the changes as a side-by-side review (similar to a GitHub Pull Request diff) that the user can silently review and accept or reject with a single click.
+
+Why Current Agents Fail at This (and Why You Need It)
+Tools like Cline or Aider often operate by:
+Reading a file.
+Generating a new version of the entire file.
+Using a script to blindly overwrite the file on disk.
+This is dangerous. If the AI hallucinates or deletes a chunk of code, the damage is done instantly.
+TPT Silent Edit solves this by decoupling generation from application. The AI generates the change, tpt-telos verifies it, and then the VS Code extension stages it as a pending, reviewable diff. The user's workflow is never interrupted; they just see a clean "Review Changes" panel.
+How to Build It (Technical Implementation in VS Code)
+You can implement this in the TypeScript layer of your VS Code extension using native VS Code APIs. There are two primary approaches:
+Approach 1: Native WorkspaceEdit (Best for small, targeted changes)
+When the backend returns the verified code, the extension calculates the diff and applies it as a pending edit.
+
+import * as vscode from 'vscode';
+
+export async function applySilentEdit(filePath: string, newCode: string) {
+    const document = await vscode.workspace.openTextDocument(filePath);
+    const edit = new vscode.WorkspaceEdit();
+    
+    // Replace the entire document content with the AI's verified output
+    const fullRange = new vscode.Range(
+        document.positionAt(0),
+        document.positionAt(document.getText().length)
+    );
+    
+    edit.replace(document.uri, fullRange, newCode);
+    
+    // Apply the edit. VS Code will automatically group this into a single "Undo" step
+    // and show the native dirty indicator (white dot on the tab).
+    await vscode.workspace.applyEdit(edit);
+    
+    // Optional: Reveal the file in the editor so the user sees the diff
+    await vscode.window.showTextDocument(document);
+}
+
+Approach 2: Custom Diff Webview (Best for large, multi-file refactors)
+For whole-project changes, you can open a native VS Code Diff Editor programmatically.
+
+export async function showSilentDiff(originalUri: vscode.Uri, newCode: string) {
+    // Create a virtual document for the new code
+    const newUri = originalUri.with({ scheme: 'tpt-verified', path: originalUri.path + '.verified' });
+    
+    // Register a text document content provider to serve the new code
+    vscode.workspace.registerTextDocumentContentProvider('tpt-verified', {
+        provideTextDocumentContent: () => newCode
+    });
+
+    // Open the side-by-side diff editor
+    await vscode.commands.executeCommand('vscode.diff', originalUri, newUri, 'TPT AI: Review Verified Changes');
+}
+
+

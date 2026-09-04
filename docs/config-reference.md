@@ -5,6 +5,13 @@ Config files are TOML. Two locations are checked (project overrides user):
 1. `~/.config/anvil/config.toml` — user-level
 2. `<project>/.anvil/config.toml` — project-level
 
+> **Security note:** Project-level config overrides user-level config.
+> A cloned untrusted repository could include `.anvil/config.toml` with
+> settings that redirect API keys or disable safety features (vault,
+> verification). User-level config is the safe default for secrets and
+> provider settings; project-level config should only contain
+> local-inference and indexing settings you trust.
+
 ## `[inference]`
 
 | Key | Type | Default | Description |
@@ -44,16 +51,22 @@ on CPU. The selected device is reported in the daemon logs at startup.
 |-----|------|---------|-------------|
 | `active` | string | `""` | Active cloud provider (empty = local only) |
 
+> Cloud provider `model` fields default to an empty string rather than a
+> specific model id — model names change too often for a hardcoded default to
+> stay current. Leaving one unset raises a clear config error naming which
+> key to set (with a link to that provider's current model list) instead of
+> silently picking a possibly-stale model.
+
 ### `[providers.openai]`
-| `model` | string | `""` | Model ID (e.g. `gpt-4o`) |
+| `model` | string | `""` | Model ID (e.g. `gpt-4o`) — required if `active = "openai"` |
 | `api_key_entry` | string | `"openai_api_key"` | OS keychain entry name |
 
 ### `[providers.anthropic]`
-| `model` | string | `"claude-sonnet-5"` | Model ID |
+| `model` | string | `""` | Model ID (e.g. `claude-sonnet-5`) — required if `active = "anthropic"` |
 | `api_key_entry` | string | `"anthropic_api_key"` | OS keychain entry name |
 
 ### `[providers.openrouter]`
-| `model` | string | `"deepseek/deepseek-coder"` | Model ID |
+| `model` | string | `""` | Model ID (e.g. `deepseek/deepseek-coder`) |
 | `api_key_entry` | string | `"openrouter_api_key"` | OS keychain entry name |
 
 ### `[providers.azure]`
@@ -65,6 +78,15 @@ on CPU. The selected device is reported in the daemon logs at startup.
 | `base_url` | string | — | Base URL for OpenAI-compatible endpoint |
 | `model` | string | — | Model name |
 | `api_key_entry` | string | `"custom_api_key"` | OS keychain entry name |
+
+> **Trust boundary:** The `providers.custom.base_url` value is fully
+> user-controlled and may point at an internal network service (e.g.
+> `http://10.0.0.5/v1`). Any API key resolved from `api_key_entry` will be
+> sent to that endpoint over the network. Project-level `.anvil/config.toml`
+> can set this value — a cloned untrusted repository could redirect
+> API-key-bearing requests to an attacker-controlled server. Prefer
+> user-level config for cloud provider settings; use project-level config
+> only for local-inference settings you trust.
 
 ## `[indexing]`
 
@@ -84,9 +106,91 @@ dependency-free feature-hashing embedder is used so vector search works fully
 offline; set `embedding_model` to a neural model served by Ollama (e.g.
 `nomic-embed-text`) for higher-quality semantic search.
 
+## `[vault]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable the secrets vault (intercepts API keys and tokens in prompts) |
+| `redact_local` | bool | `false` | Redact secrets even when running on a local backend |
+| `custom_patterns` | array | `[]` | Additional patterns to detect and redact |
+
+Each entry in `custom_patterns` has the following shape:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `name` | string | Human-readable name for the pattern |
+| `pattern` | string | Regular expression to match |
+| `replacement` | string | Replacement string (e.g. `"[REDACTED]"`) |
+
+## `[smart_context]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable smart context chunking for large files |
+| `file_size_threshold_bytes` | usize | `2048` | Files larger than this are chunked before embedding |
+| `chunk_size_threshold_bytes` | usize | `1024` | Maximum chunk size in bytes when splitting files |
+
+## `[router]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Enable automatic routing between local and cloud providers |
+| `prefer_cheapest` | bool | `true` | Route to the cheapest provider that meets quality requirements |
+| `max_cost_per_request_usd` | f64 | — | Optional cap on cost per request in USD |
+| `pinned` | string | — | Optional provider name to pin all requests to |
+
+## `[verify]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable automatic verification after code generation |
+| `run_tests` | bool | `false` | Run the project test suite after applying changes |
+| `run_linter` | bool | `true` | Run the project linter after applying changes |
+| `timeout_seconds` | u64 | `60` | Timeout for verification commands |
+| `max_retries` | u32 | `1` | Number of times to retry verification on failure |
+
 ## `[ui]`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `theme` | string | `"system"` | Color theme: `system`, `light`, `dark` |
 | `font_size` | int | `14` | Chat panel font size |
+
+## `[benchmark]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Enable benchmark tracking |
+| `core_suite_path` | string | — | Override path to core task TOML directory (default uses embedded suite) |
+| `rotation_period_days` | u32 | `180` | Days before a core task retires from the active window |
+| `stagger_interval_days` | u32 | `30` | Days between new task introductions |
+| `max_stored` | u32 | `30` | Maximum stored scorecards (LRU eviction) |
+
+### `[benchmark.adaptive]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Enable adaptive task generation from prior failures |
+| `evaluator_provider` | string | — | Provider name for the evaluator model |
+| `evaluator_model` | string | — | Model id for the evaluator |
+| `max_tasks_per_run` | u32 | `5` | Maximum adaptive tasks generated per run |
+
+### CLI usage
+
+```sh
+# Run the core benchmark suite against a model
+anvil benchmark run ollama/deepseek-coder:6.7b
+
+# Show stored scorecards
+anvil benchmark report
+
+# Compare two models
+anvil benchmark report ollama/deepseek-coder:6.7b openai/gpt-4o
+```
+
+### RPC methods
+
+| Method | Params | Description |
+|--------|--------|-------------|
+| `benchmark.run` | `{ "target": "provider/model" }` | Run the core benchmark suite |
+| `benchmark.report` | `{ "targets": ["p/m1", "p/m2"] }` (optional) | Show all scorecards or compare two |
