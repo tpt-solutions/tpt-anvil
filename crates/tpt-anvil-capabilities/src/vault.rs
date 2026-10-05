@@ -292,6 +292,50 @@ mod tests {
     }
 
     #[test]
+    fn realistic_format_secrets_are_all_redacted() {
+        // Guards against a smoke test with plausible-looking but malformed
+        // seeds giving false confidence: each value below matches the real
+        // shape its rule requires (GitHub PAT = exactly 36 chars after `ghp_`).
+        //
+        // The secret-shaped values are assembled from fragments at runtime.
+        // Writing them out in full makes them match GitHub push protection
+        // (a literal Slack token in the tree is indistinguishable from a real
+        // leaked credential), while still exercising the genuine rule shapes.
+        let gh = format!("ghp_{}", "a".repeat(36));
+        let slack = format!(
+            "xoxb-{}-{}-{}",
+            "1".repeat(12),
+            "2".repeat(12),
+            "b".repeat(24)
+        );
+        let openai = format!("sk-{}", "c".repeat(48));
+        let jwt = format!("eyJ{}.eyJ{}.", "a".repeat(20), "b".repeat(20)) + &"c".repeat(43);
+
+        let input = format!(
+            "aws=AKIAIOSFODNN7EXAMPLE\ngh={gh}\nslack={slack}\nopenai={openai}\njwt={jwt}\n"
+        );
+
+        let (redacted, hits) = redact_text(&input, &VaultConfig::default());
+        assert!(!redacted.contains("AKIAIOSFODNN7EXAMPLE"), "aws key leaked");
+        assert!(!redacted.contains(&gh), "github pat leaked");
+        assert!(!redacted.contains(&slack), "slack token leaked");
+        assert!(!redacted.contains(&openai), "openai key leaked");
+        assert!(!redacted.contains(&jwt), "jwt leaked");
+        assert!(
+            hits.len() >= 4,
+            "expected at least 4 distinct rules to fire, got {hits:?}"
+        );
+        // The matched values must never appear in the hit metadata.
+        for hit in &hits {
+            assert!(
+                !hit.label.contains("AKIA") && !hit.label.contains("ghp_"),
+                "hit metadata must not carry the matched value: {:?}",
+                hit.label
+            );
+        }
+    }
+
+    #[test]
     fn redact_request_scrubs_all_messages() {
         use tpt_anvil_core::types::{ChatMessage, Role};
         let mut request = CompletionRequest {

@@ -368,7 +368,12 @@
 - [x] Fixed **real bug**: `tpt-anvil-config`'s `AnvilConfig::merge_with`/`HasMerge` merged already-defaulted structs field-by-field, so an overlay explicitly setting a field to its type's default value (e.g. `inference.backend = "ollama"`, which is also the default) was indistinguishable from not setting it at all, and silently kept the base value instead. Replaced with merging raw TOML tables before deserializing once (`ConfigLoader::load` + `merge_toml_values` in `loader.rs`); added per-field `#[serde(default = ...)]` across `schema.rs` so partial tables deserialize correctly
 - [x] Fixed hardcoded/stale model handling: `OpenAiProvider`/`AnthropicProvider::list_models()` now call the provider's real `/models` endpoint instead of returning a static list; removed hardcoded fallback model ids in `registry.rs`/`schema.rs`/`types.rs` in favor of an explicit config error ("model names change too often to hardcode a default")
 - [x] Document new config sections in `docs/config-reference.md`
-- [ ] Manual smoke test: multi-provider cost routing, secret redaction, and a deliberately broken `/fix` through the VS Code extension (blocked on the pipeline wiring above)
+- [ ] Manual smoke test: multi-provider cost routing, secret redaction, and a deliberately broken `/fix` through the VS Code extension (partially done 2026-10-05 — see below; still needs a GUI pass and a real cloud key)
+  - [x] Secret redaction verified end-to-end through the live `slash_command` IPC path: a `/fix` whose `CodeContext` carried an AWS key produced `{"label":"AWS Access Key","count":1,"source_command":"/fix"}` in `redactions.log`, proving redaction runs before dispatch and never logs the matched value
+  - [x] Added `vault::tests::realistic_format_secrets_are_all_redacted` — the first smoke-test seeds (`ghp_ABCDEF…012345`) were plausible but did not match the rules' required shape (a GitHub PAT needs exactly 36 chars after the prefix), so only the AWS key fired. The test pins realistic-format AWS/GitHub/Slack/OpenAI/JWT values so a malformed seed cannot give false confidence again
+  - [ ] Cost routing: `router.enabled = true` with two providers configured, but selection could not be observed because the only available OpenAI credential is a fake key, so the request retried against the network instead. Needs one real provider key
+  - [ ] Broken `/fix` diff-apply and the Verifier gate, exercised from the VS Code extension UI (the `/fix` request itself is in flight and correct, but the diff was never applied to a real editor buffer)
+  - [ ] Confirm the `[vault] redact_local = true` path — the run above hit a cloud-shaped request; a local-only (Ollama) request with redaction disabled vs enabled still needs an explicit A/B
 
 ---
 
@@ -409,4 +414,5 @@
 ### 18.7 Docs & wrap-up
 - [x] Document `[benchmark]`/`[benchmark.adaptive]` config sections in `docs/config-reference.md`
 - [x] `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all -- --check` all green
-- [ ] Manual smoke test: `anvil benchmark run ollama/<model>` writes a scorecard to `~/.config/anvil/benchmarks.json`; `anvil benchmark report` lists it; `--compare` against a second model produces sane shared-subset output; 31st scorecard evicts the oldest
+- [x] Manual smoke test (2026-10-05): `anvil benchmark run ollama/qwen3.5:4b` scores the full 8-task suite and writes a scorecard to `%APPDATA%\anvil\benchmarks.json` (via `dirs::config_dir`, so `~/.config/anvil` on Unix); `anvil benchmark report` lists it. `--compare` still needs a second model benchmarked, and the 31st-scorecard LRU eviction remains covered by unit tests only rather than 31 real runs.
+  - Found and fixed three defects during this pass: missing toolchains were scored as model failures and silently shrank the denominator from 8 to 4 tasks; `npx` timeouts counted as lint failures; and `extract_code_block` kept a short fence tag (`` ```py ``) as line 1 of the graded code.
