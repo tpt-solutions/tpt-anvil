@@ -60,12 +60,12 @@
 - [x] Create `crates/tpt-anvil-inference` crate
 - [x] Define `InferenceBackend` trait (generate, stream, tokenize, model_info)
 - [x] Implement **llama.cpp backend** via `llama-cpp-rs` or `llama_cpp` crate
-  - [x] GGUF model loading (stub — full integration TODO)
+  - [x] GGUF model loading — real `llama-cpp-2` model load, context creation, tokenization, and sampling. (The earlier "stub — full integration TODO" note was stale; verified against `llama_cpp.rs` on 2026-10-05.)
   - [x] CUDA acceleration support (feature flag `cuda` + device selection)
   - [x] ROCm acceleration support (feature flag `rocm` + device selection)
   - [x] CPU fallback
 - [x] Implement **candle backend** (pure Rust)
-  - [x] GGUF/GGML model loading via candle-transformers (stub — full integration TODO)
+  - [x] GGUF/GGML model loading via candle-transformers. (Stale "stub" note corrected 2026-10-05.)
   - [x] WebGPU / wgpu acceleration (feature flag `webgpu` + device selection)
   - [x] CPU fallback
 - [x] Implement **Ollama HTTP API backend**
@@ -414,5 +414,7 @@
 ### 18.7 Docs & wrap-up
 - [x] Document `[benchmark]`/`[benchmark.adaptive]` config sections in `docs/config-reference.md`
 - [x] `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all -- --check` all green
-- [x] Manual smoke test (2026-10-05): `anvil benchmark run ollama/qwen3.5:4b` scores the full 8-task suite and writes a scorecard to `%APPDATA%\anvil\benchmarks.json` (via `dirs::config_dir`, so `~/.config/anvil` on Unix); `anvil benchmark report` lists it. `--compare` still needs a second model benchmarked, and the 31st-scorecard LRU eviction remains covered by unit tests only rather than 31 real runs.
+- [x] Manual smoke test (2026-10-05): `anvil benchmark run ollama/qwen3.5:4b` scores the full 8-task suite and writes a scorecard to `%APPDATA%\anvil\benchmarks.json` (via `dirs::config_dir`, so `~/.config/anvil` on Unix); `anvil benchmark report` lists it.
+  - `--compare` verified with a second model: `ollama/qwen3.5:4b` 62% vs `ollama/qwen3.5:9b` 50% on the shared 8-task subset. The 31st-scorecard LRU eviction remains covered by unit tests only rather than 31 real runs.
   - Found and fixed three defects during this pass: missing toolchains were scored as model failures and silently shrank the denominator from 8 to 4 tasks; `npx` timeouts counted as lint failures; and `extract_code_block` kept a short fence tag (`` ```py ``) as line 1 of the graded code.
+  - Known limitation: a machine with `tsc`/`mypy` installed runs real type-checking where a bare machine runs the tree-sitter syntax fallback, so raw percentages remain only loosely comparable across such machines. The `[passed/scorable of total]` output makes the denominator visible but does not normalize the check depth.

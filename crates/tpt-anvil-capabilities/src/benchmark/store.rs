@@ -67,7 +67,11 @@ impl BenchmarkStore {
             .find(|e| e.provider == provider && e.model_id == model_id)
     }
 
-    /// Return the default store path: `~/.config/anvil/benchmarks.json`.
+    /// Return the default store path.
+    ///
+    /// Platform-dependent: `~/.config/anvil/benchmarks.json` on Unix, but
+    /// `dirs::config_dir` resolves to `%APPDATA%` on Windows, so the file
+    /// lands in `C:\Users\<user>\AppData\Roaming\anvil\benchmarks.json`.
     pub fn default_path() -> Option<PathBuf> {
         dirs::config_dir().map(|d| d.join("anvil").join("benchmarks.json"))
     }
@@ -143,6 +147,43 @@ mod tests {
     fn load_missing_file_returns_empty() {
         let store = BenchmarkStore::load(Path::new("/nonexistent/path/benchmarks.json"));
         assert!(store.entries().is_empty());
+    }
+
+    #[test]
+    fn default_path_is_platform_correct_and_under_config_dir() {
+        // The path is platform-dependent, so a hardcoded `~/.config/anvil`
+        // assumption would break on Windows. Assert the actual shape instead.
+        let path = BenchmarkStore::default_path().expect("a config dir should resolve");
+        assert!(
+            path.ends_with("benchmarks.json"),
+            "store file must be benchmarks.json, got {path:?}"
+        );
+        assert_eq!(
+            path.parent().and_then(|p| p.file_name()),
+            Some(std::ffi::OsStr::new("anvil")),
+            "store must live in an `anvil` directory, got {path:?}"
+        );
+
+        let expected_root = dirs::config_dir().expect("config dir");
+        assert_eq!(
+            path.parent().and_then(|p| p.parent()),
+            Some(expected_root.as_path()),
+            "store must sit directly under the platform config dir"
+        );
+
+        // Pin the platform expectation explicitly so a change in `dirs`
+        // behavior cannot pass unnoticed on either OS.
+        if cfg!(windows) {
+            assert!(
+                path.to_string_lossy().contains("AppData"),
+                "Windows config dir should be under AppData, got {path:?}"
+            );
+        } else {
+            assert!(
+                path.to_string_lossy().starts_with('/'),
+                "Unix config dir should be absolute from root, got {path:?}"
+            );
+        }
     }
 
     #[test]
