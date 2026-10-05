@@ -122,6 +122,23 @@ pub struct HandlerConfig {
     /// Root of the project being edited; used to confine `verify::verify_patch`
     /// file writes and as the working directory for compiler/lint/test runs.
     pub project_root: PathBuf,
+    /// Optional override directory for the benchmark core task suite
+    /// (`benchmark.core_suite_path`).  When `None`, the suite embedded at
+    /// compile time is used.
+    pub benchmark_suite_path: Option<PathBuf>,
+}
+
+impl Default for HandlerConfig {
+    fn default() -> Self {
+        Self {
+            vault: VaultConfig::default(),
+            verify: VerifyConfig::default(),
+            smart_context: SmartContextConfig::default(),
+            router: RouterConfig::default(),
+            project_root: PathBuf::from("."),
+            benchmark_suite_path: None,
+        }
+    }
 }
 
 pub struct CommandHandler {

@@ -400,7 +400,7 @@
 
 ### 18.5 CLI
 - [x] `crates/tpt-anvil-daemon/src/cli.rs` — `Commands::Benchmark(BenchmarkArgs)` alongside `Start/Stop/Status/Auth/Models`; `BenchmarkCommands::{Run{target, no_adaptive, project}, Report{compare}}`; `handle_benchmark` follows `list_models()`'s existing `ConfigLoader`/registry construction pattern; wire into `main.rs` dispatch
-- [ ] `clap::try_parse_from` argument-parsing test for `BenchmarkCommands`
+- [x] `clap::try_parse_from` argument-parsing test for `BenchmarkCommands`
 
 ### 18.6 RPC
 - [x] `crates/tpt-anvil-core/src/ipc.rs` — `BenchmarkRunParams{provider, model_id, include_adaptive}`, `BenchmarkReportParams{compare: Option<[String;2]>}` next to existing `SlashCommandParams`

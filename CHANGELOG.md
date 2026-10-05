@@ -44,6 +44,29 @@ This project uses [Semantic Versioning](https://semver.org/).
 - Marketplace listings: VS Code and JetBrains marketplace documentation
 - GitHub Discussions templates: General Q&A, Feature Requests, Show and Tell
 
+### Fixed
+- `tpt-anvil-indexer`: pinned `tree-sitter-python` to `0.23`. The `0.25` grammar's
+  `LANGUAGE` constant is incompatible with `tree-sitter 0.24`, so Python symbol and
+  call-edge extraction silently returned empty results.
+- `benchmark run`: the core task suite and scaffold fixtures are now embedded at compile
+  time instead of being read from `CARGO_MANIFEST_DIR` at runtime, so a released binary
+  can still run benchmarks.
+- `benchmark run`: local inference targets (`ollama/…`) are dispatched through the
+  inference backend rather than the cloud provider registry, which previously made the
+  documented `anvil benchmark run ollama/<model>` command fail outright.
+- `benchmark run`: each task is graded in a disposable temp sandbox seeded from its
+  scaffold, instead of resolving scaffold paths relative to the user's project (which
+  never existed, so every task failed with "scaffold read error").
+- `benchmark run`: model output is unwrapped from markdown code fences before
+  compilation, and companion manifests (`Cargo.toml`, `tsconfig.json`) are seeded into
+  the sandbox so `cargo check` / `tsc` can run.
+- `benchmark run`: missing verification toolchains (e.g. `mypy`, `typescript`) now mark
+  a task as skipped instead of counting it as a model failure, so scores are not
+  understated on partially-provisioned machines.
+- Windows: `npx`/`npm` resolve to their `.cmd` shims and `python` skips the
+  `WindowsApps` Store alias stub, both of which previously failed with "program not
+  found" / "Python was not found".
+
 ### Changed
 - **Breaking:** All crates now carry the `tpt-anvil-` prefix. `anvil-core`, `anvil-config`,
   `anvil-inference`, `anvil-capabilities`, and `anvil-daemon` are renamed to `tpt-anvil-core`,

@@ -136,6 +136,7 @@ mod tests {
                     cost_usd: None,
                     output: None,
                     errors: vec![],
+                    skipped: false,
                 },
                 crate::benchmark::scorecard::TaskRunResult {
                     task_id: "t2".into(),
@@ -147,6 +148,7 @@ mod tests {
                     cost_usd: None,
                     output: None,
                     errors: vec!["compile error".into()],
+                    skipped: false,
                 },
                 crate::benchmark::scorecard::TaskRunResult {
                     task_id: "t3".into(),
@@ -158,6 +160,7 @@ mod tests {
                     cost_usd: None,
                     output: None,
                     errors: vec!["lint warning".into()],
+                    skipped: false,
                 },
             ],
             adaptive_results: vec![],

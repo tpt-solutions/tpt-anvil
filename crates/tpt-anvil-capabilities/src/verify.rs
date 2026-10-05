@@ -33,6 +33,29 @@ impl Default for VerifyConfig {
     }
 }
 
+/// Detect toolchain-availability failures in a subprocess's output.
+///
+/// These are environment problems, not defects in the model's answer:
+///
+/// * `No module named mypy` / `No module named pytest` — Python package absent
+/// * `This is not the tsc command you are looking for` — `typescript` is not
+///   installed locally, so `npx tsc` cannot resolve a real compiler
+/// * `program not found` — the launcher could not be spawned
+/// * `is not recognized as an internal or external command`
+///
+/// Returns `true` when the output indicates a missing toolchain rather than a
+/// genuine compile/lint/test failure.
+pub fn is_toolchain_missing(output: &str) -> bool {
+    const SIGNALS: &[&str] = &[
+        "No module named",
+        "is not the tsc command you are looking for",
+        "program not found",
+        "is not recognized as an internal or external command",
+        "command not found",
+    ];
+    SIGNALS.iter().any(|s| output.contains(s))
+}
+
 /// Result of verification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerificationResult {
@@ -63,6 +86,33 @@ fn detect_language(file_path: &str) -> Option<&'static str> {
     }
 }
 
+/// Resolve a Node.js launcher (`npx` / `npm`) to something spawnable.
+///
+/// On Windows these are `.cmd` shims; `Command::new("npx")` fails with
+/// "program not found" because no extensionless `npx` file exists. Return the
+/// resolved path when we can find one.
+fn node_launcher(name: &str) -> String {
+    if !cfg!(windows) {
+        return name.to_string();
+    }
+    // A Node install contains `npx`, `npx.cmd`, and `npx.ps1` side by side.
+    // The extensionless `npx` is a shell script, not a PE binary, so
+    // `Command::new` fails on it. `.cmd` is the real Windows launcher and is
+    // what npm itself documents, so prefer it.
+    for ext in ["cmd", "exe"] {
+        if let Ok(path) = which(&format!("{name}.{ext}")) {
+            return path.to_string_lossy().to_string();
+        }
+    }
+    if let Ok(path) = which(name) {
+        let candidate = path.to_string_lossy().to_string();
+        if Path::new(&candidate).extension().is_some() {
+            return candidate;
+        }
+    }
+    name.to_string()
+}
+
 /// Get the appropriate compiler/type-checker command for a language.
 fn compiler_command(language: &str, project_root: &Path) -> Option<(String, Vec<String>)> {
     match language {
@@ -72,16 +122,66 @@ fn compiler_command(language: &str, project_root: &Path) -> Option<(String, Vec<
             if tsc.exists() {
                 Some((tsc.to_str()?.into(), vec!["--noEmit".into()]))
             } else {
-                Some(("npx".into(), vec!["tsc".into(), "--noEmit".into()]))
+                Some((node_launcher("npx"), vec!["tsc".into(), "--noEmit".into()]))
             }
         }
-        "python" => Some((
-            "python3".into(),
-            vec!["-m".into(), "mypy".into(), ".".into()],
-        )),
+        "python" => {
+            let py = python_command()?;
+            Some((py, vec!["-m".into(), "mypy".into(), ".".into()]))
+        }
         "go" => Some(("go".into(), vec!["build".into(), "./...".into()])),
         _ => None,
     }
+}
+
+/// Resolve a working Python interpreter.
+///
+/// On Windows the `python3` name is frequently an App Execution Alias stub
+/// (`%LOCALAPPDATA%\Microsoft\WindowsApps\python3.exe`) that exits with a
+/// "Python was not found" store prompt instead of running. Prefer `python`,
+/// which is the real interpreter on Windows, and fall back to `python3` on
+/// Unix where `python` may not exist.
+fn python_command() -> Option<String> {
+    for candidate in ["python", "python3"] {
+        if command_exists(candidate) {
+            return Some(candidate.to_string());
+        }
+    }
+    None
+}
+
+/// Whether `name` resolves to an executable that is not the WindowsApps alias
+/// stub (which exists on disk but cannot actually run).
+fn command_exists(name: &str) -> bool {
+    let Ok(path) = which(name) else {
+        return false;
+    };
+    let path_str = path.to_string_lossy();
+    if !cfg!(windows) {
+        return true;
+    }
+    // `...\WindowsApps\python.exe` / `python3.exe` are the Microsoft Store
+    // aliases, not a real interpreter.
+    !path_str.contains("WindowsApps")
+}
+
+/// Minimal `which`: walk `PATH` looking for an executable named `name`.
+fn which(name: &str) -> std::result::Result<std::path::PathBuf, ()> {
+    let path_var = std::env::var_os("PATH").ok_or(())?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+        // Windows resolves `.exe`/`.cmd`/`.bat` transparently.
+        for ext in ["exe", "cmd", "bat"] {
+            let with_ext = dir.join(format!("{name}.{ext}"));
+            if with_ext.is_file() {
+                return Ok(with_ext);
+            }
+        }
+    }
+    Err(())
 }
 
 /// Get the appropriate linter command for a language.
@@ -99,7 +199,7 @@ fn linter_command(language: &str, project_root: &Path) -> Option<(String, Vec<St
             if eslint.exists() {
                 Some((eslint.to_str()?.into(), vec![".".into()]))
             } else {
-                Some(("npx".into(), vec!["eslint".into(), ".".into()]))
+                Some((node_launcher("npx"), vec!["eslint".into(), ".".into()]))
             }
         }
         _ => None,
@@ -110,8 +210,11 @@ fn linter_command(language: &str, project_root: &Path) -> Option<(String, Vec<St
 fn test_command(language: &str) -> Option<(String, Vec<String>)> {
     match language {
         "rust" => Some(("cargo".into(), vec!["test".into()])),
-        "typescript" | "javascript" => Some(("npm".into(), vec!["test".into()])),
-        "python" => Some(("python3".into(), vec!["-m".into(), "pytest".into()])),
+        "typescript" | "javascript" => Some((node_launcher("npm"), vec!["test".into()])),
+        "python" => {
+            let py = python_command()?;
+            Some((py, vec!["-m".into(), "pytest".into()]))
+        }
         "go" => Some(("go".into(), vec!["test".into(), "./...".into()])),
         _ => None,
     }
@@ -364,5 +467,139 @@ mod tests {
         ));
         std::fs::create_dir_all(dir.join("src")).unwrap();
         dir
+    }
+
+    #[test]
+    fn which_finds_cargo() {
+        // cargo is required for the rust verification path, so it must resolve.
+        assert!(which("cargo").is_ok(), "cargo should be on PATH");
+    }
+
+    #[test]
+    fn which_rejects_nonexistent_command() {
+        assert!(which("definitely-not-a-real-command-xyz").is_err());
+    }
+
+    #[test]
+    fn python_command_never_returns_windows_store_stub() {
+        if let Some(py) = python_command() {
+            assert!(
+                !command_exists("nonexistent"),
+                "sanity: nonexistent command must not exist"
+            );
+            if cfg!(windows) {
+                let resolved = which(&py).expect("resolved python");
+                assert!(
+                    !resolved.to_string_lossy().contains("WindowsApps"),
+                    "python_command() returned the Store alias stub: {}",
+                    resolved.display()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn compiler_command_python_uses_resolved_interpreter() {
+        if let Some((cmd, args)) = compiler_command("python", Path::new(".")) {
+            assert!(cmd == "python" || cmd == "python3");
+            assert_eq!(
+                args,
+                vec!["-m".to_string(), "mypy".to_string(), ".".to_string()]
+            );
+        }
+    }
+
+    #[test]
+    fn test_command_python_uses_resolved_interpreter() {
+        if let Some((cmd, args)) = test_command("python") {
+            assert!(cmd == "python" || cmd == "python3");
+            assert_eq!(args, vec!["-m".to_string(), "pytest".to_string()]);
+        }
+    }
+
+    #[test]
+    fn compiler_command_rust_unchanged() {
+        let (cmd, args) = compiler_command("rust", Path::new(".")).expect("rust command");
+        assert_eq!(cmd, "cargo");
+        assert_eq!(args, vec!["check".to_string()]);
+    }
+
+    #[test]
+    fn compiler_command_unknown_is_none() {
+        assert!(compiler_command("cobol", Path::new(".")).is_none());
+    }
+
+    #[test]
+    fn command_exists_is_false_for_absent_binary() {
+        assert!(!command_exists("definitely-not-a-real-command-xyz"));
+    }
+
+    #[test]
+    fn node_launcher_resolves_to_spawnable_path() {
+        if cfg!(windows) {
+            let npx = node_launcher("npx");
+            if which("npx.cmd").is_ok() {
+                assert!(
+                    npx.to_ascii_lowercase().ends_with(".cmd"),
+                    "npx launcher should resolve to npx.cmd, got {npx}"
+                );
+                assert!(
+                    std::path::Path::new(&npx).exists(),
+                    "resolved npx launcher must exist on disk: {npx}"
+                );
+            }
+        } else {
+            assert_eq!(node_launcher("npx"), "npx");
+        }
+    }
+
+    #[test]
+    fn is_toolchain_missing_detects_missing_mypy() {
+        assert!(is_toolchain_missing(
+            "C:\\Python313\\python.exe: No module named mypy"
+        ));
+    }
+
+    #[test]
+    fn is_toolchain_missing_detects_missing_typescript() {
+        let out = "This is not the tsc command you are looking for\n\
+                   Use npm install typescript to first add TypeScript";
+        assert!(is_toolchain_missing(out));
+    }
+
+    #[test]
+    fn is_toolchain_missing_detects_spawn_failure() {
+        assert!(is_toolchain_missing("failed to run npx: program not found"));
+        assert!(is_toolchain_missing(
+            "'npx' is not recognized as an internal or external command"
+        ));
+    }
+
+    #[test]
+    fn is_toolchain_missing_ignores_real_compile_errors() {
+        // A genuine compile failure must NOT be treated as an environment gap,
+        // otherwise real model errors would be silently excluded from scoring.
+        let out = "error[E0601]: `main` function not found in crate `main`\n  \
+                   error: could not compile `anvil-bench-scaffold` (bin \"main\")";
+        assert!(!is_toolchain_missing(out));
+    }
+
+    #[test]
+    fn is_toolchain_missing_ignores_type_errors() {
+        let out = "error[E0308]: mismatched types\n  = note: expected `i32`";
+        assert!(!is_toolchain_missing(out));
+    }
+
+    #[tokio::test]
+    async fn resolved_npx_launcher_actually_runs() {
+        let cmd = node_launcher("npx");
+        let (passed, _output) = run_command(
+            &cmd,
+            &["--version".to_string()],
+            std::env::temp_dir().as_path(),
+            Duration::from_secs(60),
+        )
+        .await;
+        assert!(passed, "`{cmd} --version` should succeed");
     }
 }

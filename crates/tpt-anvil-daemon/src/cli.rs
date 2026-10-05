@@ -10,7 +10,7 @@ use tpt_anvil_providers::keystore;
 
 use crate::server::to_provider_config;
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(
     name = "anvil",
     about = "TPT Anvil — local AI development environment",
@@ -21,7 +21,7 @@ pub struct Cli {
     pub command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Start the Anvil daemon
     Start {
@@ -57,13 +57,13 @@ pub enum Commands {
     Benchmark(BenchmarkArgs),
 }
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 pub struct BenchmarkArgs {
     #[command(subcommand)]
     pub command: BenchmarkCommands,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum BenchmarkCommands {
     /// Run the benchmark suite against a model
     Run {
@@ -84,13 +84,13 @@ pub enum BenchmarkCommands {
     },
 }
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 pub struct AuthArgs {
     #[command(subcommand)]
     pub command: AuthCommands,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum AuthCommands {
     /// Store an API key in the OS keychain
     Set {
@@ -471,14 +471,137 @@ pub async fn handle_benchmark(cmd: BenchmarkCommands, project_root: Option<&str>
     }
 }
 
+/// A normalized completion result, so local and cloud executors can share the
+/// scoring/recording path.
+struct ExecutorResponse {
+    content: String,
+    prompt_tokens: Option<u32>,
+    completion_tokens: Option<u32>,
+    cost_usd: Option<f64>,
+}
+
+/// A benchmark target — either a local inference backend or a cloud provider.
+enum BenchmarkExecutor {
+    Local(std::sync::Arc<dyn tpt_anvil_inference::backend::InferenceBackend>),
+    Cloud(std::sync::Arc<dyn tpt_anvil_providers::provider::CloudProvider>),
+}
+
+impl BenchmarkExecutor {
+    async fn complete(&self, prompt: &str, model: &str) -> Result<ExecutorResponse> {
+        match self {
+            Self::Local(backend) => {
+                use tpt_anvil_core::types::{ChatMessage, CompletionRequest, Role};
+
+                let request = CompletionRequest {
+                    messages: vec![ChatMessage {
+                        role: Role::User,
+                        content: prompt.to_string(),
+                    }],
+                    model: Some(model.to_string()),
+                    max_tokens: 2048,
+                    temperature: 0.2,
+                    stream: false,
+                };
+                let response = backend
+                    .complete(&request)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                Ok(ExecutorResponse {
+                    content: response.content,
+                    prompt_tokens: response.usage.as_ref().map(|u| u.prompt_tokens),
+                    completion_tokens: response.usage.as_ref().map(|u| u.completion_tokens),
+                    // Local inference has no per-token billing.
+                    cost_usd: None,
+                })
+            }
+            Self::Cloud(provider) => {
+                use tpt_anvil_providers::types::{
+                    BackendKind, ChatMessage, CompletionRequest, Role,
+                };
+
+                let request = CompletionRequest {
+                    messages: vec![ChatMessage {
+                        role: Role::User,
+                        content: prompt.to_string(),
+                    }],
+                    model: Some(model.to_string()),
+                    max_tokens: 2048,
+                    temperature: 0.2,
+                    stream: false,
+                };
+                let response = provider
+                    .complete(&request)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                let cost_usd = response.usage.as_ref().and_then(|u| {
+                    let backend = match provider.name() {
+                        "openai" => BackendKind::OpenAi,
+                        "anthropic" => BackendKind::Anthropic,
+                        "openrouter" => BackendKind::OpenRouter,
+                        "azure" => BackendKind::AzureOpenAi,
+                        _ => BackendKind::OpenAiCompatible,
+                    };
+                    tpt_anvil_providers::cost::estimate_cost(&backend, model, u)
+                });
+                Ok(ExecutorResponse {
+                    content: response.content,
+                    prompt_tokens: response.usage.as_ref().map(|u| u.prompt_tokens),
+                    completion_tokens: response.usage.as_ref().map(|u| u.completion_tokens),
+                    cost_usd,
+                })
+            }
+        }
+    }
+}
+
+/// Resolve a `provider/model` target prefix to an executor.
+///
+/// Local backend names (`ollama`, `llama_cpp`, `candle`) are served by
+/// `BackendRegistry`; everything else is looked up in the cloud provider
+/// registry by exact name, falling back to the configured active provider.
+async fn resolve_executor(
+    cfg: &tpt_anvil_config::AnvilConfig,
+    provider_name: &str,
+) -> Result<BenchmarkExecutor> {
+    use tpt_anvil_inference::registry::BackendRegistry;
+    use tpt_anvil_providers::registry::ProviderRegistry;
+
+    if matches!(provider_name, "ollama" | "llama_cpp" | "candle") {
+        // A local backend must match the configured inference backend, otherwise
+        // the requested target cannot be served.
+        if cfg.inference.backend != provider_name {
+            return Err(anyhow::anyhow!(
+                "backend '{provider_name}' is not the configured inference backend (configured: '{}'); \
+                 set `inference.backend` in your config first",
+                cfg.inference.backend
+            ));
+        }
+        let registry = BackendRegistry::from_config(cfg)
+            .map_err(|e| anyhow::anyhow!("failed to build inference backend: {e}"))?;
+        return Ok(BenchmarkExecutor::Local(registry.active));
+    }
+
+    let provider_cfg = to_provider_config(cfg);
+    let registry = ProviderRegistry::from_config(&provider_cfg)
+        .map_err(|e| anyhow::anyhow!("failed to build provider registry: {e}"))?;
+
+    if let Some(entry) = registry.available.iter().find(|e| e.name == provider_name) {
+        return Ok(BenchmarkExecutor::Cloud(entry.provider.clone()));
+    }
+    if let Some(active) = registry.active {
+        return Ok(BenchmarkExecutor::Cloud(active));
+    }
+    Err(anyhow::anyhow!(
+        "no provider named '{provider_name}' configured; run `anvil auth` first"
+    ))
+}
+
 async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&str>) -> Result<()> {
     use tpt_anvil_capabilities::benchmark::load_builtin_tasks;
     use tpt_anvil_capabilities::benchmark::runner::{core_score, grade_task};
     use tpt_anvil_capabilities::benchmark::scorecard::ModelScorecard;
     use tpt_anvil_capabilities::benchmark::store::BenchmarkStore;
     use tpt_anvil_capabilities::verify::VerifyConfig;
-    use tpt_anvil_providers::registry::ProviderRegistry;
-    use tpt_anvil_providers::types::{ChatMessage, CompletionRequest, Role};
 
     let (provider_name, model_id) = target.split_once('/').ok_or_else(|| {
         anyhow::anyhow!(
@@ -489,33 +612,27 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
     // Load config and build the provider for the given name
     let cfg = tpt_anvil_config::loader::ConfigLoader::load(project_root.map(std::path::Path::new))
         .map_err(|e| anyhow::anyhow!("failed to load config: {e}"))?;
-    let provider_cfg = to_provider_config(&cfg);
-    let registry = ProviderRegistry::from_config(&provider_cfg)
-        .map_err(|e| anyhow::anyhow!("failed to build provider registry: {e}"))?;
 
-    // Find a matching provider entry — try exact name match first, then fallback to active
-    let provider: std::sync::Arc<dyn tpt_anvil_providers::provider::CloudProvider> =
-        if let Some(entry) = registry.available.iter().find(|e| e.name == provider_name) {
-            entry.provider.clone()
-        } else if let Some(active) = registry.active {
-            active
-        } else {
-            return Err(anyhow::anyhow!(
-                "no provider named '{provider_name}' configured; run `anvil auth` first"
-            ));
-        };
+    // Resolve the target to a concrete executor.  Local inference backends
+    // (`ollama`, `llama_cpp`, `candle`) are `InferenceBackend`s, not
+    // `CloudProvider`s, so they must be dispatched through `BackendRegistry`.
+    // Anything else resolves against the configured cloud provider registry.
+    let executor = resolve_executor(&cfg, provider_name).await?;
 
-    let tasks = load_builtin_tasks();
+    let tasks = load_builtin_tasks(
+        cfg.benchmark
+            .core_suite_path
+            .as_deref()
+            .map(std::path::Path::new),
+    );
     if tasks.is_empty() {
         return Err(anyhow::anyhow!(
             "no benchmark tasks found in benchmarks/core/ — check that the benchmark suite is present"
         ));
     }
 
-    let proj = project_root
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-
+    // Tasks are graded inside a per-task temp sandbox seeded from the
+    // embedded scaffold, so nothing is written into the user's project.
     let verify_config = VerifyConfig {
         enabled: cfg.verify.enabled,
         run_tests: cfg.verify.run_tests,
@@ -534,40 +651,33 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
 
     for task in &tasks {
         print!("[ ] {} ... ", task.description);
-
-        let request = CompletionRequest {
-            messages: vec![ChatMessage {
-                role: Role::User,
-                content: task.prompt.clone(),
-            }],
-            model: Some(model_id.to_string()),
-            max_tokens: 2048,
-            temperature: 0.2,
-            stream: false,
-        };
+        let _ = std::io::Write::flush(&mut std::io::stdout());
 
         let start = std::time::Instant::now();
-        let output = provider.complete(&request).await;
+        let output = executor.complete(task.prompt.as_str(), model_id).await;
         let latency = start.elapsed().as_millis() as u64;
 
         match output {
             Ok(response) => {
-                let task_result = grade_task(task, &response.content, &proj, &verify_config).await;
-                let cost = response.usage.as_ref().and_then(|u| {
-                    let backend = match provider_name {
-                        "openai" => tpt_anvil_providers::types::BackendKind::OpenAi,
-                        "anthropic" => tpt_anvil_providers::types::BackendKind::Anthropic,
-                        "openrouter" => tpt_anvil_providers::types::BackendKind::OpenRouter,
-                        "azure" => tpt_anvil_providers::types::BackendKind::AzureOpenAi,
-                        _ => tpt_anvil_providers::types::BackendKind::OpenAiCompatible,
-                    };
-                    tpt_anvil_providers::cost::estimate_cost(&backend, model_id, u)
-                });
-                if let Some(c) = cost {
+                let mut task_result = grade_task(task, &response.content, &verify_config).await;
+                task_result.latency_ms += latency;
+                task_result.prompt_tokens = response.prompt_tokens;
+                task_result.completion_tokens = response.completion_tokens;
+                task_result.cost_usd = response.cost_usd;
+                if let Some(c) = response.cost_usd {
                     total_cost += c;
                 }
-                let status = if task_result.passed { "PASS" } else { "FAIL" };
+                let status = if task_result.passed {
+                    "PASS"
+                } else if task_result.skipped {
+                    "SKIP"
+                } else {
+                    "FAIL"
+                };
                 println!("{status} ({latency}ms)");
+                if task_result.skipped {
+                    println!("    verification toolchain unavailable — excluded from score");
+                }
                 if !task_result.errors.is_empty() {
                     for err in &task_result.errors {
                         println!("    {err}");
@@ -588,6 +698,11 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
                         cost_usd: None,
                         output: None,
                         errors: vec![e.to_string()],
+                        // The provider call itself failed (unreachable
+                        // backend, model not pulled). The model never
+                        // produced an answer, so this is a real failure
+                        // rather than an unscoreable environment gap.
+                        skipped: false,
                     },
                 );
             }
@@ -595,6 +710,8 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
     }
 
     let score = core_score(&results);
+    let skipped = results.iter().filter(|r| r.skipped).count();
+    let total_tasks = results.len();
     let task_ids: Vec<String> = tasks.iter().map(|t| t.id.clone()).collect();
     let now = chrono_now();
 
@@ -621,6 +738,12 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
         "\nBenchmark complete: {:.0}% ({target}) at {now}",
         score * 100.0
     );
+    if skipped > 0 {
+        println!(
+            "{skipped} of {total_tasks} task(s) skipped (verification toolchain unavailable)."
+        );
+        println!("Install the missing toolchains to score those tasks.");
+    }
     if total_cost > 0.0 {
         println!("Estimated cost: ${total_cost:.4}");
     }
@@ -759,4 +882,216 @@ pub async fn show_cost_summary() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn cli_definition_is_valid() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn benchmark_args_definition_is_valid() {
+        BenchmarkArgs::command().debug_assert();
+    }
+
+    #[test]
+    fn parse_benchmark_run_minimal() {
+        let args =
+            BenchmarkArgs::try_parse_from(["benchmark", "run", "ollama/deepseek-coder:6.7b"])
+                .expect("minimal `benchmark run` should parse");
+
+        match args.command {
+            BenchmarkCommands::Run {
+                target,
+                no_adaptive,
+                project,
+            } => {
+                assert_eq!(target, "ollama/deepseek-coder:6.7b");
+                assert!(!no_adaptive, "adaptive should default to enabled");
+                assert_eq!(project, None);
+            }
+            other => panic!("expected BenchmarkCommands::Run, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_benchmark_run_with_flags() {
+        let args = BenchmarkArgs::try_parse_from([
+            "benchmark",
+            "run",
+            "openai/gpt-4o-mini",
+            "--no-adaptive",
+            "--project",
+            "/tmp/scratch",
+        ])
+        .expect("`benchmark run` with all flags should parse");
+
+        match args.command {
+            BenchmarkCommands::Run {
+                target,
+                no_adaptive,
+                project,
+            } => {
+                assert_eq!(target, "openai/gpt-4o-mini");
+                assert!(no_adaptive);
+                assert_eq!(project.as_deref(), Some("/tmp/scratch"));
+            }
+            other => panic!("expected BenchmarkCommands::Run, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_benchmark_run_short_project_flag() {
+        let args = BenchmarkArgs::try_parse_from([
+            "benchmark",
+            "run",
+            "ollama/qwen2.5-coder",
+            "-p",
+            "/tmp/x",
+        ])
+        .expect("short `-p` flag should parse");
+
+        match args.command {
+            BenchmarkCommands::Run { project, .. } => {
+                assert_eq!(project.as_deref(), Some("/tmp/x"))
+            }
+            other => panic!("expected BenchmarkCommands::Run, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_benchmark_report_no_args() {
+        let args = BenchmarkArgs::try_parse_from(["benchmark", "report"])
+            .expect("`benchmark report` with no targets should parse");
+
+        match args.command {
+            BenchmarkCommands::Report { compare } => assert!(compare.is_empty()),
+            other => panic!("expected BenchmarkCommands::Report, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_benchmark_report_two_targets() {
+        let args = BenchmarkArgs::try_parse_from([
+            "benchmark",
+            "report",
+            "ollama/model-a",
+            "ollama/model-b",
+        ])
+        .expect("two compare targets should parse");
+
+        match args.command {
+            BenchmarkCommands::Report { compare } => {
+                assert_eq!(compare, vec!["ollama/model-a", "ollama/model-b"]);
+            }
+            other => panic!("expected BenchmarkCommands::Report, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_benchmark_report_rejects_three_targets() {
+        let err = BenchmarkArgs::try_parse_from([
+            "benchmark",
+            "report",
+            "ollama/model-a",
+            "ollama/model-b",
+            "ollama/model-c",
+        ])
+        .expect_err("three compare targets must be rejected");
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::TooManyValues);
+    }
+
+    #[test]
+    fn parse_benchmark_run_requires_target() {
+        let err = BenchmarkArgs::try_parse_from(["benchmark", "run"])
+            .expect_err("`benchmark run` without a target must be rejected");
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn parse_benchmark_rejects_unknown_subcommand() {
+        let err = BenchmarkArgs::try_parse_from(["benchmark", "explode"])
+            .expect_err("unknown benchmark subcommand must be rejected");
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::InvalidSubcommand);
+    }
+
+    #[test]
+    fn parse_top_level_benchmark_subcommand() {
+        let cli = Cli::try_parse_from(["anvil", "benchmark", "run", "ollama/qwen2.5-coder"])
+            .expect("top-level `anvil benchmark run` should parse");
+
+        match cli.command {
+            Commands::Benchmark(BenchmarkArgs {
+                command: BenchmarkCommands::Run { target, .. },
+            }) => assert_eq!(target, "ollama/qwen2.5-coder"),
+            other => panic!("expected Commands::Benchmark, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn existing_top_level_subcommands_still_parse() {
+        assert!(matches!(
+            Cli::try_parse_from(["anvil", "status"])
+                .expect("status")
+                .command,
+            Commands::Status { cost: false }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["anvil", "status", "--cost"])
+                .expect("status --cost")
+                .command,
+            Commands::Status { cost: true }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["anvil", "stop"])
+                .expect("stop")
+                .command,
+            Commands::Stop
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["anvil", "start", "-p", "/tmp/proj"])
+                .expect("start -p")
+                .command,
+            Commands::Start { project: Some(_) }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["anvil", "doctor", "--fix"])
+                .expect("doctor --fix")
+                .command,
+            Commands::Doctor { fix: true }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["anvil", "init", "--project"])
+                .expect("init --project")
+                .command,
+            Commands::Init { project: true }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["anvil", "models"])
+                .expect("models")
+                .command,
+            Commands::Models
+        ));
+    }
+
+    #[test]
+    fn parse_target_splits_provider_and_model() {
+        let (provider, model) = parse_target("ollama/deepseek-coder:6.7b").expect("valid target");
+        assert_eq!(provider, "ollama");
+        assert_eq!(model, "deepseek-coder:6.7b");
+    }
+
+    #[test]
+    fn parse_target_rejects_missing_slash() {
+        let err = parse_target("deepseek-coder:6.7b").expect_err("missing provider must error");
+        assert!(err.to_string().contains("provider/model"));
+    }
 }

@@ -82,6 +82,7 @@ fn to_handler_config(
             pinned: cfg.router.pinned.clone(),
         },
         project_root,
+        benchmark_suite_path: cfg.benchmark.core_suite_path.clone().map(Into::into),
     }
 }
 
@@ -532,7 +533,12 @@ async fn run_benchmark_rpc(
     use tpt_anvil_capabilities::benchmark::store::BenchmarkStore;
     use tpt_anvil_providers::types::{ChatMessage, CompletionRequest, Role};
 
-    let tasks = load_builtin_tasks();
+    let hcfg = handler.handler_config();
+    let tasks = load_builtin_tasks(
+        hcfg.benchmark_suite_path
+            .as_deref()
+            .map(std::path::Path::new),
+    );
     if tasks.is_empty() {
         return Err(anyhow::anyhow!("no benchmark tasks found"));
     }
@@ -554,7 +560,6 @@ async fn run_benchmark_rpc(
 
     let hcfg = handler.handler_config();
     let verify_config = hcfg.verify.clone();
-    let proj = hcfg.project_root.clone();
 
     let mut results = Vec::new();
     let mut total_cost: f64 = 0.0;
@@ -574,7 +579,7 @@ async fn run_benchmark_rpc(
         let start = std::time::Instant::now();
         match provider.complete(&request).await {
             Ok(response) => {
-                let task_result = grade_task(task, &response.content, &proj, &verify_config).await;
+                let task_result = grade_task(task, &response.content, &verify_config).await;
                 let cost = response.usage.as_ref().and_then(|u| {
                     let backend = match provider_name {
                         "openai" => tpt_anvil_providers::types::BackendKind::OpenAi,
@@ -602,6 +607,8 @@ async fn run_benchmark_rpc(
                         cost_usd: None,
                         output: None,
                         errors: vec![e.to_string()],
+                        // Provider call failed; the model never answered.
+                        skipped: false,
                     },
                 );
             }

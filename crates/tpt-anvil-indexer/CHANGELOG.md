@@ -25,6 +25,16 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 - `walk_project`, `detect_language`, and `content_hash` for traversal.
 - `IndexWatcher` for incremental re-indexing on file change.
 
+### Fixed
+- Pinned `tree-sitter-python` to `0.23` to match the other grammar crates. Under `0.25`
+  the generated grammar's `LANGUAGE` constant is incompatible with `tree-sitter 0.24`,
+  so `set_language` failed and Python symbol/call-edge extraction silently returned
+  nothing.
+
+### Changed
+- `store::blob_to_vector` now uses `slice::as_chunks` instead of `chunks_exact`, silencing
+  the `chunks_exact` constant-chunk-size lint that failed `clippy -D warnings`.
+
 ### Notes
 - This crate is deliberately decoupled from `tpt-anvil-core` and `tpt-anvil-config` so it can
   be published standalone to crates.io. It defines its own `types.rs`. Please do not re-add a

@@ -83,6 +83,7 @@ mod tests {
             cost_usd: None,
             output: None,
             errors: vec![],
+            skipped: false,
         }
     }
 

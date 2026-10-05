@@ -31,6 +31,14 @@ pub struct TaskRunResult {
     /// Error strings if the task did not pass.
     #[serde(default)]
     pub errors: Vec<String>,
+    /// Whether the task was skipped because a required verification toolchain
+    /// (compiler, linter, or test runner) was unavailable in this environment.
+    ///
+    /// Skipped tasks are excluded from the score entirely: a missing `mypy`
+    /// says nothing about the model's ability, so counting it as a failure
+    /// would understate the score and make runs non-comparable across machines.
+    #[serde(default)]
+    pub skipped: bool,
 }
 
 /// A scorecard for a specific (provider, model) pair after one benchmark run.
@@ -60,13 +68,17 @@ pub struct ModelScorecard {
 }
 
 /// Compute the pass-rate score from a list of task run results.
-/// Returns a value between 0.0 and 1.0.  Returns 0.0 for an empty list.
+///
+/// Skipped tasks (missing verification toolchain) are excluded from both the
+/// numerator and the denominator.  Returns a value between 0.0 and 1.0.
+/// Returns 0.0 when no scorable results remain.
 pub fn compute_score(results: &[TaskRunResult]) -> f64 {
-    if results.is_empty() {
+    let scorable: Vec<&TaskRunResult> = results.iter().filter(|r| !r.skipped).collect();
+    if scorable.is_empty() {
         return 0.0;
     }
-    let passed = results.iter().filter(|r| r.passed).count() as f64;
-    passed / results.len() as f64
+    let passed = scorable.iter().filter(|r| r.passed).count() as f64;
+    passed / scorable.len() as f64
 }
 
 /// Filter results to only include the given task ids.
@@ -93,6 +105,7 @@ mod tests {
             cost_usd: None,
             output: None,
             errors: vec![],
+            skipped: false,
         }
     }
 
@@ -132,5 +145,60 @@ mod tests {
         assert!(filtered
             .iter()
             .all(|r| r.task_id == "a" || r.task_id == "c"));
+    }
+
+    #[test]
+    fn skipped_tasks_are_excluded_from_score() {
+        // One pass, one genuine fail, two skipped (missing toolchain).
+        // Score must be 1/2, not 1/4.
+        let mut s1 = make_result("s1", false);
+        s1.skipped = true;
+        let mut s2 = make_result("s2", false);
+        s2.skipped = true;
+        let results = vec![make_result("a", true), make_result("b", false), s1, s2];
+        assert!((compute_score(&results) - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn all_skipped_scores_zero() {
+        let mut s1 = make_result("s1", false);
+        s1.skipped = true;
+        let mut s2 = make_result("s2", false);
+        s2.skipped = true;
+        assert_eq!(compute_score(&[s1, s2]), 0.0);
+    }
+
+    #[test]
+    fn skipped_deserializes_as_false_when_absent() {
+        // Backwards compatibility: scorecards written before `skipped` existed
+        // must still load.
+        let json = r#"{
+            "provider":"ollama","model_id":"m","last_run_at":"2026-01-01",
+            "core_task_ids_run":[],"core_results":[],"core_score":0.5
+        }"#;
+        let card: ModelScorecard = serde_json::from_str(json).expect("legacy scorecard loads");
+        assert!(card.core_results.is_empty());
+        assert_eq!(card.core_score, 0.5);
+    }
+
+    #[test]
+    fn skipped_round_trips_through_json() {
+        let mut s = make_result("s", false);
+        s.skipped = true;
+        let card = ModelScorecard {
+            provider: "ollama".into(),
+            model_id: "m".into(),
+            last_run_at: "2026-01-01".into(),
+            core_task_ids_run: vec!["s".into()],
+            core_results: vec![s],
+            adaptive_results: vec![],
+            core_score: 0.0,
+            adaptive_score: None,
+            total_cost_usd: 0.0,
+        };
+        let json = serde_json::to_string(&card).expect("serialize");
+        assert!(json.contains("\"skipped\":true"));
+        let back: ModelScorecard = serde_json::from_str(&json).expect("deserialize");
+        assert!(back.core_results[0].skipped);
     }
 }
