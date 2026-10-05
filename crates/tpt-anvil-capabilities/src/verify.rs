@@ -53,6 +53,10 @@ pub fn is_toolchain_missing(output: &str) -> bool {
         "program not found",
         "is not recognized as an internal or external command",
         "command not found",
+        // A globally installed `tsc` (e.g. on CI runners) resolves via `npx`
+        // but, with no tsconfig.json in the project, just prints its usage
+        // banner and exits non-zero. No project-level compiler is available.
+        "tsc: The TypeScript Compiler",
         // `npx` reaches the network when a package is not installed locally, so
         // it can hang until the subprocess timeout rather than printing a
         // recognisable error. That is still a missing toolchain, not a defect
