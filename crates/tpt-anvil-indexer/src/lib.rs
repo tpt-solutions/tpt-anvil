@@ -9,6 +9,7 @@ pub mod outline;
 pub mod retriever;
 pub mod store;
 pub mod symbols;
+pub mod syntax;
 pub mod types;
 pub mod walker;
 pub mod watcher;

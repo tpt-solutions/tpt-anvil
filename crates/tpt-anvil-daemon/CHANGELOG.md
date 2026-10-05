@@ -9,6 +9,12 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- `anvil benchmark run` now reports its denominator as `[passed/scorable of total]`
+  so a score is never mistaken for a full-suite result when tasks were skipped.
+- `anvil benchmark report` annotates stored scores computed over a reduced task
+  set, e.g. `50% (4)`, meaning 4 of the recorded tasks were scorable.
+
 ### Added
 - `anvil` binary with `start`, `stop`, `status`, `auth`, `models`, `init`, `doctor`, and
   `benchmark` subcommands.

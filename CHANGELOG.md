@@ -9,6 +9,21 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Benchmark runs no longer under-report their denominator. On a machine without
+  `tsc`/`mypy`, all TypeScript and Python tasks were excluded from scoring, so a
+  `50%` score could silently mean 50% of 4 tasks rather than of 8. The
+  verification gate now degrades to a tree-sitter syntax check when a compiler
+  or linter is unavailable, so the full suite is scored. `anvil benchmark run`
+  and `anvil benchmark report` both display `[passed/scorable of total]`, and
+  the stored-scorecard table annotates reduced-denominator scores.
+- A missing verification toolchain (absent `tsc`/`mypy`/`eslint`, or an `npx`
+  call that hangs until the subprocess timeout) is no longer counted as a model
+  failure.
+- Model responses fenced with a short language tag (`` ```py ``, `` ```ts ``)
+  are extracted correctly. The tag previously became line 1 of the graded code,
+  which failed verification as a syntax error at 1:1.
+
 ### Added
 - Monorepo scaffold: Cargo workspace + npm workspace
 - `anvil-core`: shared types, IPC protocol (JSON-RPC 2.0), error types

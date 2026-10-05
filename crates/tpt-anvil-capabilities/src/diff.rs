@@ -10,7 +10,7 @@ impl DiffEngine {
     /// Handles both raw diff output and fenced code blocks.
     pub fn extract_diff(model_output: &str, file_path: &str) -> Option<DiffPatch> {
         // Try to find a fenced diff block first
-        if let Some(diff) = extract_fenced(model_output, "diff") {
+        if let Some(diff) = extract_fenced_tag(model_output, "diff") {
             return Some(DiffPatch {
                 file_path: file_path.to_string(),
                 unified_diff: diff,
@@ -169,32 +169,138 @@ fn parse_hunk_orig_start(header: &str) -> Option<usize> {
     nums.trim().parse::<usize>().ok()
 }
 
-fn extract_fenced(text: &str, lang: &str) -> Option<String> {
-    let fence = format!("```{}", lang);
-    let start = text.find(&fence)?;
-    let after_fence = &text[start + fence.len()..];
-    let end = after_fence.find("```")?;
-    Some(after_fence[..end].trim().to_string())
+/// Read the body of the fenced block whose opening fence starts at `start`.
+///
+/// Strips the info string (everything from the opening backticks to the end of
+/// that line) so a ```` ```py ```` block yields code only; leaving `py` on line
+/// 1 would make the snippet a syntax error at 1:1. Returns `None` when the block
+/// is never closed.
+fn block_at(text: &str, start: usize) -> Option<String> {
+    let after = text.get(start + 3..)?;
+
+    // Skip the info string: everything up to the first newline. An unterminated
+    // line means the fence closed immediately, so there is no body.
+    let body = match after.find('\n') {
+        Some(nl) => &after[nl + 1..],
+        None => {
+            // No newline at all before the closing fence: the rest of the line
+            // is the info string and there is no code.
+            return if after.trim_start().starts_with("```") {
+                Some(String::new())
+            } else {
+                None
+            };
+        }
+    };
+
+    let end = body.find("```")?;
+    Some(body[..end].trim().to_string())
 }
 
-pub fn extract_code_block(text: &str) -> Option<String> {
-    // Try language-specific fences
-    for lang in &[
-        "rust",
-        "python",
-        "typescript",
-        "javascript",
-        "go",
-        "java",
-        "cpp",
-        "c",
-        "",
-    ] {
-        if let Some(block) = extract_fenced(text, lang) {
-            return Some(block);
+/// The info string of the opening fence at `start`, if it is a simple
+/// `word`/`word:extra` tag. Fences with spaces in the info string are prose
+/// blocks (or plain unfenced text) and carry no language.
+fn fence_info_string(text: &str, start: usize) -> Option<&str> {
+    let after = text.get(start + 3..)?;
+    let line = after.split('\n').next()?.trim();
+    let name = line.split(':').next()?.trim();
+    if name.is_empty() || name.contains(' ') {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+/// Fence info strings that map onto a canonical language name.
+///
+/// Models emit many spellings for the same language; without this mapping a
+/// ```` ```py ```` block would not be recognized as Python at all.
+const LANGUAGE_ALIASES: &[(&str, &str)] = &[
+    ("py", "python"),
+    ("python3", "python"),
+    ("ts", "typescript"),
+    ("tsx", "typescript"),
+    ("js", "javascript"),
+    ("jsx", "javascript"),
+    ("node", "javascript"),
+    ("rs", "rust"),
+    ("golang", "go"),
+];
+
+/// Normalize a fence info string to a canonical language name.
+fn canonical_language(info: &str) -> String {
+    let base = info.to_ascii_lowercase();
+    match LANGUAGE_ALIASES
+        .iter()
+        .find(|(alias, _)| *alias == base)
+        .map(|(_, canonical)| (*canonical).to_string())
+    {
+        Some(canonical) => canonical,
+        None => base,
+    }
+}
+
+/// Extract the body of the first fenced block tagged exactly `tag`.
+///
+/// Unlike [`extract_code_block`], this matches a specific info string and does
+/// not normalize aliases, because callers here want a literal `diff` block.
+pub fn extract_fenced_tag(text: &str, tag: &str) -> Option<String> {
+    let mut offset = 0usize;
+    while let Some(rel) = text.get(offset..)?.find("```") {
+        let start = offset + rel;
+        if let Some(info) = fence_info_string(text, start) {
+            if info.eq_ignore_ascii_case(tag) {
+                return block_at(text, start);
+            }
         }
+        offset = start + 3;
     }
     None
+}
+
+/// Languages this extractor understands.
+const KNOWN_LANGUAGES: &[&str] = &[
+    "rust",
+    "python",
+    "typescript",
+    "javascript",
+    "go",
+    "java",
+    "cpp",
+    "c",
+];
+
+/// Extract the model's code from a response.
+///
+/// Scans opening fences in document order and returns the body of the first one
+/// whose info string names a language we understand (after alias
+/// normalization, so ```` ```py ```` and ```` ```ts ```` are honored). Falls
+/// back to the first fence of any kind, info string stripped.
+pub fn extract_code_block(text: &str) -> Option<String> {
+    let mut first_fence: Option<usize> = None;
+    let mut offset = 0usize;
+
+    while let Some(rel) = text.get(offset..)?.find("```") {
+        let start = offset + rel;
+        if first_fence.is_none() {
+            first_fence = Some(start);
+        }
+
+        // Only opening fences carry an info string; a closing fence is
+        // followed by prose, so `fence_info_string` returning `Some` implies
+        // this is an opening fence.
+        if let Some(info) = fence_info_string(text, start) {
+            if KNOWN_LANGUAGES.contains(&canonical_language(info).as_str()) {
+                if let Some(block) = block_at(text, start) {
+                    return Some(block);
+                }
+            }
+        }
+
+        offset = start + 3;
+    }
+
+    first_fence.and_then(|start| block_at(text, start))
 }
 
 #[cfg(test)]
@@ -213,6 +319,64 @@ mod tests {
         let text = "Result:\n```\nlet x = 1;\n```";
         let block = extract_code_block(text).unwrap();
         assert_eq!(block, "let x = 1;");
+    }
+
+    #[test]
+    fn extract_code_block_short_alias_fence_is_recognized() {
+        // Regression: a ```py block previously fell through to the bare-fence
+        // branch and kept `py` as the first line of the extracted "code",
+        // producing a syntax error at 1:1 when graded.
+        let text = "Here you go:\n```py\ndef add(a, b):\n    return a + b\n```\nDone.";
+        let block = extract_code_block(text).unwrap();
+        assert_eq!(block, "def add(a, b):\n    return a + b");
+        assert!(
+            !block.starts_with("py"),
+            "info string must be stripped, got: {block:?}"
+        );
+    }
+
+    #[test]
+    fn extract_code_block_ts_alias() {
+        let text = "```ts\nexport const x: number = 1;\n```";
+        assert_eq!(
+            extract_code_block(text).unwrap(),
+            "export const x: number = 1;"
+        );
+    }
+
+    #[test]
+    fn extract_code_block_info_string_is_always_stripped() {
+        // Even an unrecognized tag must not leak into the code.
+        let text = "```unknownlang\nsome code\n```";
+        assert_eq!(extract_code_block(text).unwrap(), "some code");
+    }
+
+    #[test]
+    fn extract_code_block_prefers_first_recognized_block() {
+        // A prose/diff block before the real answer must not win.
+        let text = "First, the diff:\n```diff\n- old\n+ new\n```\nNow the file:\n```rust\nfn main() {}\n```";
+        assert_eq!(extract_code_block(text).unwrap(), "fn main() {}");
+    }
+
+    #[test]
+    fn extract_code_block_skips_prose_fence_before_code() {
+        let text =
+            "Thinking out loud:\n```\nstep 1\nstep 2\n```\nAnswer:\n```python\nprint(1)\n```";
+        assert_eq!(extract_code_block(text).unwrap(), "print(1)");
+    }
+
+    #[test]
+    fn extract_code_block_survives_round_trip_through_syntax_check() {
+        // The end-to-end property that matters: whatever fence the model used,
+        // the extracted text must parse as the language it claims to be.
+        let text = "```python\ndef add(a, b):\n    return a + b\n```";
+        let block = extract_code_block(text).unwrap();
+        let errors = tpt_anvil_indexer::syntax::syntax_errors(&block, "python");
+        assert_eq!(
+            errors,
+            Some(vec![]),
+            "extracted python must be syntactically valid, errors: {errors:?}"
+        );
     }
 
     #[test]

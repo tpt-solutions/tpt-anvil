@@ -712,6 +712,12 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
     let score = core_score(&results);
     let skipped = results.iter().filter(|r| r.skipped).count();
     let total_tasks = results.len();
+    // Compute the denominator counts before `results` is moved into the
+    // scorecard below. Showing them explicitly matters: a bare percentage hides
+    // how many tasks actually contributed, so "50%" over 2 scorable tasks reads
+    // like "50%" over 8 and invites false comparisons between machines.
+    let scorable = results.iter().filter(|r| !r.skipped).count();
+    let passed_count = results.iter().filter(|r| !r.skipped && r.passed).count();
     let task_ids: Vec<String> = tasks.iter().map(|t| t.id.clone()).collect();
     let now = chrono_now();
 
@@ -734,9 +740,12 @@ async fn run_benchmark(target: &str, _no_adaptive: bool, project_root: Option<&s
         .save(&store_path)
         .map_err(|e| anyhow::anyhow!("failed to save benchmark store: {e}"))?;
 
+    // Show the denominator explicitly: a bare percentage hides how many tasks
+    // actually contributed, so "50%" over 2 scorable tasks reads like "50%"
+    // over 8 and invites false comparisons between machines.
     println!(
-        "\nBenchmark complete: {:.0}% ({target}) at {now}",
-        score * 100.0
+        "\nBenchmark complete: {:.0}% ({target}) at {now}  [{passed_count}/{scorable} scored of {total_tasks}]",
+        score * 100.0,
     );
     if skipped > 0 {
         println!(
@@ -770,7 +779,7 @@ async fn show_benchmark_report(targets: &[String]) -> Result<()> {
             // Show all stored scorecards
             println!("Stored Benchmark Scorecards\n");
             println!(
-                "{:<15} {:<25} {:>8} {:>8} {:>10}",
+                "{:<15} {:<25} {:>12} {:>8} {:>10}",
                 "Provider", "Model", "Core", "Adaptive", "Cost"
             );
             println!("{}", "-".repeat(68));
@@ -785,8 +794,18 @@ async fn show_benchmark_report(targets: &[String]) -> Result<()> {
                     "-".into()
                 };
                 let core = format!("{:.0}%", entry.core_score * 100.0);
+                // Carry the denominator in the table so a score computed over a
+                // reduced task set (skipped toolchains) is not mistaken for a
+                // full-suite run.
+                let scored = entry.core_results.iter().filter(|r| !r.skipped).count();
+                let skipped_n = entry.core_results.len().saturating_sub(scored);
+                let core = if skipped_n > 0 {
+                    format!("{core} ({scored})")
+                } else {
+                    core
+                };
                 println!(
-                    "{:<15} {:<25} {:>8} {:>8} {:>10}",
+                    "{:<15} {:<25} {:>12} {:>8} {:>10}",
                     entry.provider, entry.model_id, core, adaptive, cost
                 );
             }

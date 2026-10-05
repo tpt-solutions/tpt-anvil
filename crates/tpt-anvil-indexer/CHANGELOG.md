@@ -10,6 +10,11 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `syntax` module for toolchain-free syntax validation: `syntax_errors`,
+  `is_syntactically_valid`, `grammar_for`, and `format_errors`. Parses source
+  with tree-sitter and reports `ERROR`/`MISSING` nodes with 1-based positions,
+  capped at 10 reported errors. Returns `None` when no grammar is bundled for
+  the language, which callers must treat as "cannot check" rather than "clean".
 - Tree-sitter symbol extraction for Rust, Python, JavaScript, TypeScript, Go, Java, C, C++,
   Ruby, PHP, and C#.
 - Call graph construction: `extract_call_edges`, `CallGraph`, `CallEdge`, `callers_of`, and

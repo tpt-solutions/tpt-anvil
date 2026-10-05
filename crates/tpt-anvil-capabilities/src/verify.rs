@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
+use tpt_anvil_indexer::syntax;
 use tracing::info;
 
 /// Configuration for the verification gate.
@@ -52,6 +53,11 @@ pub fn is_toolchain_missing(output: &str) -> bool {
         "program not found",
         "is not recognized as an internal or external command",
         "command not found",
+        // `npx` reaches the network when a package is not installed locally, so
+        // it can hang until the subprocess timeout rather than printing a
+        // recognisable error. That is still a missing toolchain, not a defect
+        // in the model's answer.
+        "timed out after",
     ];
     SIGNALS.iter().any(|s| output.contains(s))
 }
@@ -289,6 +295,18 @@ async fn resolve_target(
     Ok(target)
 }
 
+/// Syntax-check `patch_content` with tree-sitter, for use when no real
+/// toolchain is available.
+///
+/// Returns `Some(true)`/`Some(false)` when the language has a bundled
+/// grammar, and `None` when it cannot be checked at all (caller should then
+/// treat the task as skipped). This is strictly weaker than a compiler: it
+/// catches truncated or malformed output but not type errors.
+fn syntax_check_fallback(patch_content: &str, language: &str) -> Option<bool> {
+    let errors = syntax::syntax_errors(patch_content, language)?;
+    Some(errors.is_empty())
+}
+
 /// Verify a patch by temporarily applying it, running checks, then restoring.
 ///
 /// `patch_content` is the full file content after applying the patch.
@@ -362,11 +380,49 @@ pub async fn verify_patch(
         info!("running compiler: {cmd} {}", args.join(" "));
         let (passed, output) = run_command(&cmd, &args, project_root, timeout).await;
         result.compiler_output = Some(output.clone());
+
         if !passed {
-            result.passed = false;
-            result
-                .errors
-                .push(format!("compiler check failed:\n{output}"));
+            // A missing toolchain is an environment problem, not a defect in
+            // the model's answer. Degrade to a tree-sitter syntax check rather
+            // than failing the task or excluding it from the score: `tsc` and
+            // `mypy` are frequently absent (a throwaway sandbox has no
+            // `node_modules`, no virtualenv), and silently shrinking the
+            // denominator makes scores non-comparable across machines.
+            if is_toolchain_missing(&output) {
+                match syntax_check_fallback(patch_content, language) {
+                    Some(true) => {
+                        // Clean syntax. Log the degradation rather than pushing
+                        // an `errors` entry: a passing result with a non-empty
+                        // error list is misleading to every consumer.
+                        info!(
+                            "{language}: compiler unavailable, fell back to tree-sitter \
+                             syntax check (passed)"
+                        );
+                    }
+                    Some(false) => {
+                        let report = syntax::format_errors(
+                            &syntax::syntax_errors(patch_content, language).unwrap_or_default(),
+                            file_path,
+                        );
+                        result.passed = false;
+                        result.errors.push(format!(
+                            "compiler unavailable; syntax check failed:\n{report}"
+                        ));
+                    }
+                    None => {
+                        // No grammar either — genuinely unverifiable.
+                        result.passed = false;
+                        result
+                            .errors
+                            .push(format!("compiler check failed:\n{output}"));
+                    }
+                }
+            } else {
+                result.passed = false;
+                result
+                    .errors
+                    .push(format!("compiler check failed:\n{output}"));
+            }
         }
     }
 
@@ -377,8 +433,15 @@ pub async fn verify_patch(
             let (passed, output) = run_command(&cmd, &args, project_root, timeout).await;
             result.lint_output = Some(output.clone());
             if !passed {
-                result.passed = false;
-                result.errors.push(format!("lint check failed:\n{output}"));
+                // Same reasoning as the compiler above: `npx eslint` without a
+                // local `node_modules` is an environment problem, not a model
+                // defect, so it must not fail an otherwise-clean result.
+                if is_toolchain_missing(&output) {
+                    info!("{language}: linter unavailable, skipping lint gate");
+                } else {
+                    result.passed = false;
+                    result.errors.push(format!("lint check failed:\n{output}"));
+                }
             }
         }
     }
@@ -428,6 +491,148 @@ mod tests {
         assert!(cfg.enabled);
         assert!(!cfg.run_tests);
         assert!(cfg.run_linter);
+    }
+
+    #[test]
+    fn syntax_fallback_accepts_valid_typescript() {
+        let good = "export function add(a: number, b: number): number {\n  return a + b;\n}\n";
+        assert_eq!(syntax_check_fallback(good, "typescript"), Some(true));
+    }
+
+    #[test]
+    fn syntax_fallback_rejects_truncated_typescript() {
+        // The failure mode this fallback exists to catch: a model response
+        // truncated mid-function.
+        let truncated = "export function add(a: number, b: number): number {\n  return a + b;\n";
+        assert_eq!(syntax_check_fallback(truncated, "typescript"), Some(false));
+    }
+
+    #[test]
+    fn syntax_fallback_accepts_valid_python() {
+        assert_eq!(
+            syntax_check_fallback("def add(a, b):\n    return a + b\n", "python"),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn syntax_fallback_accepts_balanced_but_semantically_wrong_python() {
+        // Proves the limitation honestly: tree-sitter cannot see that `+` is
+        // the wrong operator, only that the source is malformed.
+        let wrong_but_balanced = "def add(a, b):\n    return a - b\n";
+        assert_eq!(
+            syntax_check_fallback(wrong_but_balanced, "python"),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn syntax_fallback_returns_none_for_unknown_language() {
+        assert_eq!(syntax_check_fallback("DISPLAY ...", "cobol"), None);
+    }
+
+    #[tokio::test]
+    async fn missing_typescript_toolchain_falls_back_instead_of_failing() {
+        // End-to-end for the regression this fixes: `npx tsc` cannot resolve a
+        // real compiler in a sandbox, which used to fail every TS task.
+        let root = tempdir_for_test();
+        let original = "export function add(a: number, b: number): number {\n  return a + b;\n}\n";
+        tokio::fs::write(root.join("utils.ts"), original)
+            .await
+            .unwrap();
+
+        let result = verify_patch(
+            original,
+            // Valid, complete TypeScript: the fallback must let this through.
+            "export function add(a: number, b: number): number {\n  return a + b;\n}\n",
+            "utils.ts",
+            &root,
+            &VerifyConfig {
+                enabled: true,
+                run_linter: false,
+                ..VerifyConfig::default()
+            },
+        )
+        .await;
+
+        let compiler = result.compiler_output.as_deref().unwrap_or("");
+        if is_toolchain_missing(compiler) {
+            // Degraded to a syntax check, which must pass this valid content
+            // rather than recording a failure.
+            assert!(
+                result.passed,
+                "valid TS must pass via syntax fallback; errors: {:?}",
+                result.errors
+            );
+            assert!(
+                result.errors.is_empty(),
+                "a passing result must not carry errors: {:?}",
+                result.errors
+            );
+        } else {
+            // A real `tsc` was available; a genuine typecheck also passes.
+            assert!(result.passed, "errors: {:?}", result.errors);
+        }
+    }
+
+    #[tokio::test]
+    async fn truncated_typescript_fails_even_without_a_toolchain() {
+        // The complement of the test above: when no compiler exists, malformed
+        // output must still be rejected rather than waved through.
+        let root = tempdir_for_test();
+        let original = "export function add(a: number, b: number): number {\n  return a + b;\n}\n";
+        tokio::fs::write(root.join("utils.ts"), original)
+            .await
+            .unwrap();
+
+        let result = verify_patch(
+            original,
+            "export function add(a: number, b: number): number {\n  return a + b;\n",
+            "utils.ts",
+            &root,
+            &VerifyConfig {
+                enabled: true,
+                run_linter: false,
+                ..VerifyConfig::default()
+            },
+        )
+        .await;
+
+        if is_toolchain_missing(result.compiler_output.as_deref().unwrap_or("")) {
+            assert!(
+                !result.passed,
+                "truncated output must fail the syntax fallback"
+            );
+        }
+        let _ = tokio::fs::remove_dir_all(&root).await;
+    }
+
+    #[tokio::test]
+    async fn verify_restores_original_content_after_fallback() {
+        let root = tempdir_for_test();
+        let original = "export function add(a: number, b: number): number {\n  return a + b;\n}\n";
+        tokio::fs::write(root.join("utils.ts"), original)
+            .await
+            .unwrap();
+
+        let _ = verify_patch(
+            original,
+            "export function broken( {\n",
+            "utils.ts",
+            &root,
+            &VerifyConfig {
+                enabled: true,
+                run_linter: false,
+                ..VerifyConfig::default()
+            },
+        )
+        .await;
+
+        let after = tokio::fs::read_to_string(root.join("utils.ts"))
+            .await
+            .unwrap();
+        assert_eq!(after, original, "verification must not leave edits behind");
+        let _ = tokio::fs::remove_dir_all(&root).await;
     }
 
     #[tokio::test]
@@ -565,6 +770,15 @@ mod tests {
         let out = "This is not the tsc command you are looking for\n\
                    Use npm install typescript to first add TypeScript";
         assert!(is_toolchain_missing(out));
+    }
+
+    #[test]
+    fn is_toolchain_missing_detects_subprocess_timeout() {
+        // `npx` hangs trying to reach the network when a package is absent, so
+        // the timeout is how a missing TypeScript/ESLint toolchain surfaces.
+        assert!(is_toolchain_missing(
+            "C:\\Program Files\\nodejs\\npx.cmd timed out after 30s"
+        ));
     }
 
     #[test]

@@ -10,7 +10,38 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `syntax` module: toolchain-free syntax validation via tree-sitter —
+  `syntax_errors`, `is_syntactically_valid`, `grammar_for`, and `format_errors`.
+  Reports `ERROR`/`MISSING` nodes with 1-based positions, bounded to 10
+  reported errors. `None` means "no grammar for this language", which is
+  distinct from "parsed clean".
+- Tree-sitter syntax fallback in the verification gate. When a real compiler or
+  linter is unavailable, verification degrades to a syntax check instead of
+  failing or excluding the task.
+- `extract_fenced_tag` for pulling a block with one specific fence info string.
 - Slash command engine: `Command` and `CommandHandler` covering `/generate`, `/test`,
+  `/explain`, `/fix`, `/docs`, and `/chat`.
+
+### Fixed
+- **Benchmark scoring silently shrank the denominator.** Both TypeScript tasks
+  and both Python tasks were skipped on any machine without `tsc`/`mypy`, so a
+  reported `50%` could mean 50% of 4 tasks rather than of 8 — making runs
+  incomparable across machines without saying so.
+- **A missing toolchain was reported as a model defect.** `npx tsc` and
+  `npx eslint` fail with a placeholder stub, and `npx` can instead hang until
+  the subprocess timeout when it reaches for the network. Both are now
+  recognized as a missing toolchain and fall back to the syntax check. A
+  timeout counts as a missing toolchain, not as a lint failure.
+- **The fence info string leaked into graded code.** `extract_code_block` only
+  recognized full language names, so a ` ```py ` or ` ```ts ` block fell
+  through to the bare-fence branch and kept the tag as line 1 of the extracted
+  code — a syntax error at 1:1 for every such response. Fences are now scanned
+  in document order, short aliases (`py`, `ts`, `js`, `rs`, `tsx`, `golang`,
+  …) are normalized, and the info string is always stripped.
+- A ` ```diff ` block preceding the real answer no longer wins over it; the
+  first block naming a known language does.
+- `verify_patch` no longer records an error entry on a passing result when it
+  falls back to the syntax check.
   `/explain`, `/fix`, `/docs`, and `/chat`.
 - Context assembly: `build_system_prompt`, `assemble_context_message`, and `build_messages`
   with budget-aware context selection.
