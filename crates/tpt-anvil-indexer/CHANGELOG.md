@@ -1,0 +1,33 @@
+# Changelog — tpt-anvil-indexer
+
+All notable changes to `tpt-anvil-indexer` are documented here.
+
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+This crate adheres to [Semantic Versioning](https://semver.org/).
+
+---
+
+## [Unreleased]
+
+### Added
+- Tree-sitter symbol extraction for Rust, Python, JavaScript, TypeScript, Go, Java, C, C++,
+  Ruby, PHP, and C#.
+- Call graph construction: `extract_call_edges`, `CallGraph`, `CallEdge`, `callers_of`, and
+  `callees_of`.
+- `outline` module for AST outline compression of code summaries, plus `outline_stats`.
+- `IndexStore` over SQLite for vector storage and FTS, with `upsert_embeddings`,
+  `all_embeddings`, `upsert_file`, `insert_symbols`, `upsert_fts`, `search_fts`, and
+  `search_symbols`.
+- BM25 full-text search via `tantivy`.
+- `Embedder` trait with `HashingEmbedder` (offline feature hashing) and `OllamaEmbedder`,
+  plus `cosine_similarity`.
+- Hybrid retrieval: `reciprocal_rank_fusion` over `RankedItem` and `FusedResult`.
+- `walk_project`, `detect_language`, and `content_hash` for traversal.
+- `IndexWatcher` for incremental re-indexing on file change.
+
+### Notes
+- This crate is deliberately decoupled from `tpt-anvil-core` and `tpt-anvil-config` so it can
+  be published standalone to crates.io. It defines its own `types.rs`. Please do not re-add a
+  core dependency.
+
+[Unreleased]: https://github.com/tpt-solutions/tpt-anvil/commits/master/crates/tpt-anvil-indexer

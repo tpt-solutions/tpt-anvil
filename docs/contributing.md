@@ -3,7 +3,9 @@
 
 # Contributing to TPT Anvil
 
-Thank you for your interest in contributing. This document covers everything you need to get the project building and your changes submitted.
+Thank you for your interest in TPT Anvil.
+
+**Contributions are issues only.** This project does not accept pull requests; please open a [GitHub issue](https://github.com/tpt-solutions/tpt-anvil/issues) for bug reports, feature requests, and ideas. This document covers building and testing locally, e.g. to reproduce a bug before reporting it.
 
 ## Prerequisites
 
@@ -17,12 +19,12 @@ Thank you for your interest in contributing. This document covers everything you
 cargo build --all
 ```
 
-This compiles every crate in the workspace, including `anvil-core`, `anvil-config`, `tpt-anvil-indexer`, `anvil-daemon`, and all others.
+This compiles every crate in the workspace, including `tpt-anvil-core`, `tpt-anvil-config`, `tpt-anvil-indexer`, `tpt-anvil-daemon`, and all others.
 
 ## Running the Daemon
 
 ```sh
-cargo run -p anvil-daemon -- start
+cargo run -p tpt-anvil-daemon -- start
 ```
 
 The daemon listens on a local socket and orchestrates indexing, search, and model interactions. See `docs/architecture.md` for a full description of the runtime components.
@@ -61,22 +63,13 @@ Individual crates can be tested in isolation with `cargo test -p <crate-name>`. 
 - Format: `cargo fmt --all`
 - Lint: `cargo clippy --all-targets --all-features -- -D warnings`
 
-All clippy warnings are treated as errors in CI. Fix them before opening a pull request.
+All clippy warnings are treated as errors in CI. Keep the tree clean when reproducing issues.
 
 ### TypeScript (VS Code extension)
 
 - Type check: `npx tsc --noEmit` (from `extensions/vscode/`)
 - Lint: `npx eslint src --ext .ts` (from `extensions/vscode/`)
 
-## Submitting Changes
+## Reporting Issues
 
-1. **Fork** the repository on GitHub.
-2. **Create a branch** from `main` with a descriptive name, e.g. `feat/ruby-grammar` or `fix/indexer-crash`.
-3. Make your changes, ensuring all tests pass and the linters are clean.
-4. **Signed commits are preferred.** Configure Git commit signing with a GPG key or SSH signing key.
-5. Add a [DCO](https://developercertificate.org/) sign-off to each commit:
-   ```sh
-   git commit -s -m "your commit message"
-   ```
-6. **Open a pull request** against `main`. Fill in the PR description with a summary of the change and how to test it.
-7. Address any review feedback. Once approved and CI passes, a maintainer will merge.
+Open an issue using the bug report or feature request template. Include steps to reproduce, your OS, and relevant versions.

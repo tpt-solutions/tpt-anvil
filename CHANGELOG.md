@@ -45,6 +45,12 @@ This project uses [Semantic Versioning](https://semver.org/).
 - GitHub Discussions templates: General Q&A, Feature Requests, Show and Tell
 
 ### Changed
+- **Breaking:** All crates now carry the `tpt-anvil-` prefix. `anvil-core`, `anvil-config`,
+  `anvil-inference`, `anvil-capabilities`, and `anvil-daemon` are renamed to `tpt-anvil-core`,
+  `tpt-anvil-config`, `tpt-anvil-inference`, `tpt-anvil-capabilities`, and `tpt-anvil-daemon`
+  respectively (directories and package names). The daemon binary is still named `anvil`.
+- Every crate now ships its own `README.md` and `CHANGELOG.md`, and declares `readme`,
+  `keywords`, `categories`, `documentation`, and `homepage` metadata for crates.io.
 - `anvil-config/loader.rs::merge()`: Replaced wholesale-replace with per-field deep merge using `merge_with()` and `HasMerge` trait
 - `anvil-inference/llama_cpp.rs`: Real GGUF model loading via `llama_cpp_2`, sampler-based inference
 - `anvil-inference/candle.rs`: Real GGUF file parsing, tensor ops, greedy/temperature sampling

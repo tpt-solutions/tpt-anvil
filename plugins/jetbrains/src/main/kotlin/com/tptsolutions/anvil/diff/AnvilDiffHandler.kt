@@ -44,7 +44,8 @@ object AnvilDiffHandler {
     }
 
     private fun applyUnifiedDiff(original: String, diff: String): String? {
-        val originalLines = original.lines()
+        // "".lines() is [""], which would append a phantom blank line to a new file.
+        val originalLines = if (original.isEmpty()) emptyList() else original.lines()
         val diffLines = diff.lines()
         val result = mutableListOf<String>()
         var origCursor = 0

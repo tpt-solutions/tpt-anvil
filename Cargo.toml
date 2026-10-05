@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/anvil-core",
-    "crates/anvil-config",
-    "crates/anvil-inference",
+    "crates/tpt-anvil-core",
+    "crates/tpt-anvil-config",
+    "crates/tpt-anvil-inference",
     "crates/tpt-anvil-providers",
     "crates/tpt-anvil-indexer",
-    "crates/anvil-capabilities",
-    "crates/anvil-daemon",
+    "crates/tpt-anvil-capabilities",
+    "crates/tpt-anvil-daemon",
 ]
 
 [workspace.package]

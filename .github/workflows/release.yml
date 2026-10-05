@@ -41,7 +41,7 @@ jobs:
         run: sudo apt-get install -y musl-tools
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p anvil-daemon
+        run: cargo build --release --target ${{ matrix.target }} -p tpt-anvil-daemon
 
       - name: Rename binary (Unix)
         if: runner.os != 'Windows'

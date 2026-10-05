@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-TPT Anvil is a privacy-first, locally-runnable AI development environment (an open alternative to Copilot/Cursor). It's a Rust daemon (`anvil-daemon`, binary name `anvil`) that does all inference, indexing, and AI-capability work, talked to over JSON-RPC by a VS Code extension and a JetBrains plugin. Pre-alpha, active development.
+TPT Anvil is a privacy-first, locally-runnable AI development environment (an open alternative to Copilot/Cursor). It's a Rust daemon (`tpt-anvil-daemon`, binary name `anvil`) that does all inference, indexing, and AI-capability work, talked to over JSON-RPC by a VS Code extension and a JetBrains plugin. Pre-alpha, active development.
 
 ## Repo layout
 
@@ -17,8 +17,8 @@ This is a polyglot monorepo: a Cargo workspace (`crates/`) plus an npm workspace
 ```sh
 cargo check --workspace --all-targets   # fastest correctness check
 cargo test --workspace                  # all crates
-cargo test -p anvil-capabilities --lib  # single crate
-cargo test -p anvil-config loader::tests::merge_optional_fields  # single test
+cargo test -p tpt-anvil-capabilities --lib  # single crate
+cargo test -p tpt-anvil-config loader::tests::merge_optional_fields  # single test
 cargo clippy --workspace --all-targets -- -D warnings  # matches CI exactly
 cargo fmt --all -- --check              # matches CI exactly (use `cargo fmt` to fix)
 ```
@@ -53,23 +53,23 @@ gradle test --no-daemon    # JUnit 5 tests
 
 ### Client–server split
 
-IDE extensions never talk to models or embed logic directly — they are thin JSON-RPC 2.0 clients (newline-delimited messages) to `anvil-daemon`, over a Unix socket (`$XDG_RUNTIME_DIR/anvil/anvil.sock`) or Windows named pipe. RPC requests carry a per-run auth token written to a 0600 file at daemon startup — the daemon is meant to be exclusively local. See `docs/architecture.md` for the full IPC method table and message shapes.
+IDE extensions never talk to models or embed logic directly — they are thin JSON-RPC 2.0 clients (newline-delimited messages) to `tpt-anvil-daemon`, over a Unix socket (`$XDG_RUNTIME_DIR/anvil/anvil.sock`) or Windows named pipe. RPC requests carry a per-run auth token written to a 0600 file at daemon startup — the daemon is meant to be exclusively local. See `docs/architecture.md` for the full IPC method table and message shapes.
 
 ### Crate roles (dependency flows roughly top-to-bottom)
 
 | Crate | Role |
 |-------|------|
-| `anvil-core` | Shared types, error types, IPC protocol — used internally by everything except the two crates below |
-| `anvil-config` | `AnvilConfig` schema + `ConfigLoader` (see merge behavior below) |
-| `anvil-inference` | `InferenceBackend` trait; Ollama, llama.cpp, candle backends |
-| `tpt-anvil-providers` | `CloudProvider` trait; OpenAI, Anthropic, OpenRouter, Azure, custom-endpoint. **Deliberately decoupled from `anvil-core`/`anvil-config`** (publishable standalone to crates.io) — defines its own `types.rs` (`CompletionRequest`, `ChatMessage`, etc.), so anything that bridges this crate to `anvil-core` types (e.g. `anvil-capabilities/src/commands.rs`, `anvil-daemon/src/server.rs`) needs an explicit conversion function, not a shared type. Don't "fix" this by re-adding an `anvil-core` dependency. |
-| `tpt-anvil-indexer` | Tree-sitter parsing, symbol/AST-outline extraction, SQLite FTS5 + vector hybrid search, file watcher. Also decoupled from `anvil-core` for the same reason (own `types.rs`). |
-| `anvil-capabilities` | Slash commands (`/generate /test /explain /fix /docs`), diff engine, context assembly, conversation history — the glue layer that bridges `anvil-inference` (uses `anvil_core` types) and `tpt-anvil-providers` (uses its own types) |
-| `anvil-daemon` | Binary `anvil`: JSON-RPC server, CLI, daemon lifecycle (PID file, socket permissions) |
+| `tpt-anvil-core` | Shared types, error types, IPC protocol — used internally by everything except the two crates below |
+| `tpt-anvil-config` | `AnvilConfig` schema + `ConfigLoader` (see merge behavior below) |
+| `tpt-anvil-inference` | `InferenceBackend` trait; Ollama, llama.cpp, candle backends |
+| `tpt-anvil-providers` | `CloudProvider` trait; OpenAI, Anthropic, OpenRouter, Azure, custom-endpoint. **Deliberately decoupled from `tpt-anvil-core`/`tpt-anvil-config`** (publishable standalone to crates.io) — defines its own `types.rs` (`CompletionRequest`, `ChatMessage`, etc.), so anything that bridges this crate to `tpt-anvil-core` types (e.g. `tpt-anvil-capabilities/src/commands.rs`, `tpt-anvil-daemon/src/server.rs`) needs an explicit conversion function, not a shared type. Don't "fix" this by re-adding an `tpt-anvil-core` dependency. |
+| `tpt-anvil-indexer` | Tree-sitter parsing, symbol/AST-outline extraction, SQLite FTS5 + vector hybrid search, file watcher. Also decoupled from `tpt-anvil-core` for the same reason (own `types.rs`). |
+| `tpt-anvil-capabilities` | Slash commands (`/generate /test /explain /fix /docs`), diff engine, context assembly, conversation history — the glue layer that bridges `tpt-anvil-inference` (uses `tpt_anvil_core` types) and `tpt-anvil-providers` (uses its own types) |
+| `tpt-anvil-daemon` | Binary `anvil`: JSON-RPC server, CLI, daemon lifecycle (PID file, socket permissions) |
 
 ### Config loading and merging
 
-`ConfigLoader::load` (`anvil-config/src/loader.rs`) layers three sources — built-in defaults, `~/.config/anvil/config.toml`, then `<project>/.anvil/config.toml` (highest priority) — by merging raw **TOML tables** before deserializing into `AnvilConfig` once, not by merging already-typed/defaulted Rust structs field-by-field. This matters: struct-level merging can't distinguish "explicitly set to a value that happens to equal the type's default" from "not set at all," which silently drops real overrides. If you touch config merging, keep it at the `toml::Value` layer (`merge_toml_values`) and make sure every new config field has a `#[serde(default = ...)]` so partial tables (only some keys present) still deserialize instead of erroring on "missing field."
+`ConfigLoader::load` (`tpt-anvil-config/src/loader.rs`) layers three sources — built-in defaults, `~/.config/anvil/config.toml`, then `<project>/.anvil/config.toml` (highest priority) — by merging raw **TOML tables** before deserializing into `AnvilConfig` once, not by merging already-typed/defaulted Rust structs field-by-field. This matters: struct-level merging can't distinguish "explicitly set to a value that happens to equal the type's default" from "not set at all," which silently drops real overrides. If you touch config merging, keep it at the `toml::Value` layer (`merge_toml_values`) and make sure every new config field has a `#[serde(default = ...)]` so partial tables (only some keys present) still deserialize instead of erroring on "missing field."
 
 ### Cloud provider models are never hardcoded
 

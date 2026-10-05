@@ -1,0 +1,4 @@
+    Blocking waiting for file lock on build directory
+   Compiling tpt-anvil-capabilities v0.1.0 (D:\Programming\1PRODUCTION\Open Source\tpt-anvil\crates\tpt-anvil-capabilities)
+   Compiling tpt-anvil-providers v0.1.0 (D:\Programming\1PRODUCTION\Open Source\tpt-anvil\crates\tpt-anvil-providers)
+   Compiling tpt-anvil-daemon v0.1.0 (D:\Programming\1PRODUCTION\Open Source\tpt-anvil\crates\tpt-anvil-daemon)

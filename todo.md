@@ -30,8 +30,8 @@
 
 ## Phase 1 — Daemon & IPC Infrastructure (Rust)
 
-- [x] Create `crates/anvil-daemon` — main long-running background process
-- [x] Create `crates/anvil-core` — shared types, errors, config structs
+- [x] Create `crates/tpt-anvil-daemon` — main long-running background process
+- [x] Create `crates/tpt-anvil-core` — shared types, errors, config structs
 - [x] Define JSON-RPC 2.0 IPC protocol (request/response + streaming)
 - [x] Implement Unix socket transport (Linux/macOS)
 - [x] Implement named pipe transport (Windows)
@@ -48,7 +48,7 @@
 - [x] Define TOML config schema (`~/.config/anvil/config.toml` + per-project `.anvil/config.toml`)
 - [x] Implement config file discovery (project → user → system fallback chain)
 - [x] Implement config validation with helpful error messages
-- [x] Create `crates/anvil-config` crate
+- [x] Create `crates/tpt-anvil-config` crate
 - [x] Config hot-reload (watch file for changes, notify daemon)
 - [x] Config sections: `[inference]`, `[providers]`, `[indexing]`, `[ui]`
 - [x] Document all config keys with defaults in `docs/config-reference.md`
@@ -57,7 +57,7 @@
 
 ## Phase 3 — Inference Engine (Rust)
 
-- [x] Create `crates/anvil-inference` crate
+- [x] Create `crates/tpt-anvil-inference` crate
 - [x] Define `InferenceBackend` trait (generate, stream, tokenize, model_info)
 - [x] Implement **llama.cpp backend** via `llama-cpp-rs` or `llama_cpp` crate
   - [x] GGUF model loading (stub — full integration TODO)
@@ -122,7 +122,7 @@
 
 ## Phase 6 — AI Capability Layer (Rust)
 
-- [x] Create `crates/anvil-capabilities` crate
+- [x] Create `crates/tpt-anvil-capabilities` crate
 - [x] Slash command parser (input → command + arguments)
 - [x] Implement `/generate` — generate code from description + context
 - [x] Implement `/test` — generate unit tests for selected function/class
@@ -237,10 +237,10 @@
 
 ## Phase 12 — Stub / Incomplete Implementation Fixes (found in 2026-07-21 audit)
 
-- [x] `crates/anvil-inference/src/llama_cpp.rs` — `complete()`/`stream()` always error ("not yet fully integrated"); implement real GGUF model loading + inference via `llama-cpp-2` (in progress this session)
-- [x] `crates/anvil-inference/src/candle.rs` — `complete()`/`stream()` always error; implement real GGUF/GGML loading + forward pass via `candle-transformers`
-- [x] `crates/anvil-inference/src/candle.rs` / `llama_cpp.rs` — `count_tokens()` uses a `len()/4` heuristic instead of the model's real tokenizer
-- [x] `crates/anvil-config/src/loader.rs::merge()` — overlay wholesale-replaces base instead of a real per-field merge; project/user/default config layering silently drops partial overrides
+- [x] `crates/tpt-anvil-inference/src/llama_cpp.rs` — `complete()`/`stream()` always error ("not yet fully integrated"); implement real GGUF model loading + inference via `llama-cpp-2` (in progress this session)
+- [x] `crates/tpt-anvil-inference/src/candle.rs` — `complete()`/`stream()` always error; implement real GGUF/GGML loading + forward pass via `candle-transformers`
+- [x] `crates/tpt-anvil-inference/src/candle.rs` / `llama_cpp.rs` — `count_tokens()` uses a `len()/4` heuristic instead of the model's real tokenizer
+- [x] `crates/tpt-anvil-config/src/loader.rs::merge()` — overlay wholesale-replaces base instead of a real per-field merge; project/user/default config layering silently drops partial overrides
 - [x] `plugins/jetbrains/.../actions/SlashCommandActions.kt` — `BaseAnvilAction.actionPerformed()` (Explain/Fix/GenerateTest/GenerateDocs) is a no-op stub (`// TODO: wire to tool window and daemon`); menu items registered in `plugin.xml` do nothing when clicked
 - [x] `plugins/jetbrains/.../ui/AnvilChatPanel.kt` — `sendMessage()` builds `CodeContext` with hardcoded empty file/language/content instead of the real active editor context
 
@@ -268,13 +268,13 @@
 
 ## Phase 14 — Security Hardening (found in 2026-07-21 audit)
 
-- [x] **Critical**: Add authentication to the local IPC channel (`crates/anvil-daemon/src/server.rs`) — no token/nonce/peer-credential check today; any local process can drive the daemon. Add a per-run secret token file (0600) required on every RPC request, or verify peer UID/SID.
+- [x] **Critical**: Add authentication to the local IPC channel (`crates/tpt-anvil-daemon/src/server.rs`) — no token/nonce/peer-credential check today; any local process can drive the daemon. Add a per-run secret token file (0600) required on every RPC request, or verify peer UID/SID.
 - [x] **High**: Restrict Unix socket permissions explicitly (`server.rs`) — create runtime dir with `0o700` and `set_permissions` the socket to `0o600`/`0o700` right after bind
 - [x] **High**: Fix remove-then-bind TOCTOU race on the socket path; use atomic bind / `O_EXCL` semantics
 - [x] Medium: Add HTTP connect/request timeouts to all provider clients (`anvil-providers/src/*.rs`, currently `reqwest::Client::new()` with no timeout) — mitigates hangs from slow/malicious custom endpoints
 - [x] Medium: Document the trust boundary for the "custom" OpenAI-compatible provider (`custom.rs`) — user-controlled base URL can point at internal network services with API keys attached
 - [x] Medium: Scrub/trim raw provider HTTP error bodies before logging (`retry.rs`, `server.rs`) — avoid persisting unvalidated response text to disk logs
-- [x] Low: Harden PID file handling (`crates/anvil-daemon/src/pid.rs`) against tampering that could make `anvil stop` kill an unrelated process (ties into the runtime-dir permission fix above)
+- [x] Low: Harden PID file handling (`crates/tpt-anvil-daemon/src/pid.rs`) against tampering that could make `anvil stop` kill an unrelated process (ties into the runtime-dir permission fix above)
 - [x] Ongoing: keep Dependabot/`cargo audit` running — no known-vulnerable deps or disabled TLS verification found as of this audit
 
 ---
@@ -283,11 +283,11 @@
 
 - [x] Rename `anvil-indexer` → `tpt-anvil-indexer` (tree-sitter + BM25 + vector hybrid search — most self-contained, best standalone candidate)
 - [x] Rename `anvil-providers` → `tpt-anvil-providers` (multi-cloud LLM client: OpenAI/Anthropic/Azure/OpenRouter/custom + keyring + retry + cost tracking)
-- [x] Decouple `tpt-anvil-indexer` from `anvil-core` (inline/duplicate the `ChunkType`/`ContextChunk` types it references)
-- [x] Decouple `tpt-anvil-providers` from `anvil-core`/`anvil-config` path deps (inline minimal message/error/usage types)
+- [x] Decouple `tpt-anvil-indexer` from `tpt-anvil-core` (inline/duplicate the `ChunkType`/`ContextChunk` types it references)
+- [x] Decouple `tpt-anvil-providers` from `tpt-anvil-core`/`tpt-anvil-config` path deps (inline minimal message/error/usage types)
 - [x] Add crates.io metadata (`readme`, `keywords`, `categories`) to both crates' `Cargo.toml`
 - [x] `cargo publish --dry-run` for both crates once decoupled
-- [x] Leave `anvil-core`, `anvil-config`, `anvil-capabilities`, `anvil-daemon` as internal-only (too tightly coupled / too thin to differentiate standalone)
+- [x] Leave `tpt-anvil-core`, `tpt-anvil-config`, `tpt-anvil-capabilities`, `tpt-anvil-daemon` as internal-only (too tightly coupled / too thin to differentiate standalone)
 
 ---
 
@@ -298,10 +298,10 @@
 > **2026-07-23 correction:** several bullets below were previously checked off as done without the described wiring actually existing in the code (verified by grepping `commands.rs`/`context.rs`/`registry.rs` for the relevant calls — none were present). Unchecked accordingly; the standalone modules, config schema, and their unit tests are genuinely done, but none of the four features are on the live request path yet.
 
 ### 16.1 Vault — secret redaction
-- [x] Create `crates/anvil-capabilities/src/vault.rs`: `RedactionRule` table (AWS keys, GitHub PATs, OpenAI/Anthropic keys, Slack tokens, PEM private keys, generic password/api_key assignments, JWTs)
+- [x] Create `crates/tpt-anvil-capabilities/src/vault.rs`: `RedactionRule` table (AWS keys, GitHub PATs, OpenAI/Anthropic keys, Slack tokens, PEM private keys, generic password/api_key assignments, JWTs)
 - [x] `redact_text(input) -> (String, Vec<RedactionHit>)` and `redact_request(&mut CompletionRequest, &VaultConfig) -> Vec<RedactionHit>`
 - [x] Wire into `CommandHandler::run` (`commands.rs`) right after building `request`, before the cloud/local dispatch — apply unconditionally
-- [x] Add `VaultConfig` (`enabled`, `redact_local`, `custom_patterns`) to `anvil-config/src/schema.rs`, default `enabled: true`
+- [x] Add `VaultConfig` (`enabled`, `redact_local`, `custom_patterns`) to `tpt-anvil-config/src/schema.rs`, default `enabled: true`
 - [x] Redaction is silent (no UI interruption); log label + count only, never the matched value
 - [x] Unit tests per rule (positive + near-miss negatives) + `redact_request` multi-message test
 - [x] Integration test with a spy `CloudProvider` asserting a seeded fake key never reaches it (2026-07-23 wiring pass)
@@ -310,7 +310,7 @@
 - [x] Create `crates/tpt-anvil-indexer/src/outline.rs`: `outline_for_file(source, language, file_path) -> String` built from existing `symbols::extract_symbols`/`Symbol.signature`
 - [x] Fallback to raw source's first N lines when `extract_symbols` returns empty (unsupported language / parse failure)
 - [x] `OutlineStats` (as `original_chars`/`outline_chars`/`symbol_count`) for measurable reduction
-- [x] Wire into `assemble_context_message` (`anvil-capabilities/src/context.rs`) — replace full file content with the outline when `ctx.selection.is_none()` and content exceeds a threshold; same treatment for oversized `related_chunks` entries
+- [x] Wire into `assemble_context_message` (`tpt-anvil-capabilities/src/context.rs`) — replace full file content with the outline when `ctx.selection.is_none()` and content exceeds a threshold; same treatment for oversized `related_chunks` entries
 - [x] Add `SmartContextConfig` (`enabled`, `file_size_threshold_bytes`, `chunk_size_threshold_bytes`) to schema.rs
 - [x] Per-language outline tests (Rust; fallback path covers unsupported languages) + assertion that outline is materially smaller than original
 - [x] Bonus (2026-07-23 security pass): neutralize literal chat-template control tokens (`<|im_start|>` etc.) and grow code-fence length past any embedded backtick run before interpolating file/chunk content into the prompt — closes a local-model prompt-injection-via-source-comment gap found in the same audit
@@ -325,14 +325,14 @@
 - [x] `RouterConfigSchema.pinned` threaded through router — `select_provider` filters by pinned name with fallback to full pool; Azure remains excluded from `available` because `ProviderConfig` has no deployment/model-id field to cost against — only reachable via `providers.active` today
 
 ### 16.4 Verifier — compiler/lint gate on generated diffs
-- [x] Create `crates/anvil-capabilities/src/verify.rs`: `VerificationResult { passed, compiler_output, test_output, lint_output, errors }`, `verify_patch(original_content, patch_content, file_path, project_root, config) -> VerificationResult`
+- [x] Create `crates/tpt-anvil-capabilities/src/verify.rs`: `VerificationResult { passed, compiler_output, test_output, lint_output, errors }`, `verify_patch(original_content, patch_content, file_path, project_root, config) -> VerificationResult`
 - [x] Per-language compiler/type-checker via `tokio::process::Command` (first subprocess-execution code in the workspace besides `pid.rs`): `cargo check`/`tsc --noEmit`/`mypy`/`go build`, each actually enforced under `tokio::time::timeout` (fixed 2026-07-23 — the `timeout` parameter was previously accepted but silently ignored)
 - [x] Optional test run (`run_tests`, default **off**) and linter (`run_linter`, default **on**)
 - [x] In-place write of patch content + explicit restore of original content afterward (unconditional, after all checks)
 - [x] **Critical (2026-07-23 security pass)**: `file_path` reached `project_root.join(...)` with no containment check — a client-controlled path (`../../etc/passwd`, an absolute path, etc.) was a full arbitrary-file-write primitive once wired in. Added `resolve_target()`: canonicalizes and rejects anything outside `project_root` before any filesystem write; moved the backup file off a predictable sibling path onto a random name in the OS temp dir. Landed before wiring `verify_patch` into `commands.rs`, not after.
 - [x] On failure: bounded LLM retry — feeds `verification.errors` back to the model as one additional turn (bounded by `max_retries`, default 1) and re-verifies before giving up
 - [x] Widen `CommandHandler::run` return type to include `Option<VerificationResult>`
-- [x] Propagate `Option<VerificationResult>` through `anvil-daemon/src/server.rs` RPC response and both VS Code/JetBrains response handlers (new warning-banner UI element) — Rust side in progress, extension-side UI not started
+- [x] Propagate `Option<VerificationResult>` through `tpt-anvil-daemon/src/server.rs` RPC response and both VS Code/JetBrains response handlers (new warning-banner UI element) — Rust side in progress, extension-side UI not started
 - [x] Fail-open surfacing to the UI (show the warning banner even though the diff is still offered) — depends on the propagation above
 - [x] Add `VerifyConfigSchema` (`enabled`, `run_tests`, `run_linter`, `timeout_seconds`, `max_retries`) to schema.rs
 - [x] Unit tests for language detection, config defaults, and `resolve_target` path-traversal rejection (absolute path, `..` traversal, contained new file) — fixture-project pass/fail integration tests not yet written
@@ -344,7 +344,7 @@
 > Three parallel audits (stub/TODO sweep, security review, adoption/tooling survey) run against the working tree ahead of Phase 16's wiring pass. Full plan: `C:\Users\Phillip\.claude\plans\continue-transient-feigenbaum.md`.
 
 ### 17.1 Security fixes (beyond the Phase 16.4 path-traversal fix above)
-- [x] Medium: Windows named pipe (`anvil-daemon/src/server.rs::run_windows`) is created with no explicit security descriptor, inheriting the default (broad) DACL — add an owner-only DACL to match the Unix `0700`/`0600` treatment
+- [x] Medium: Windows named pipe (`tpt-anvil-daemon/src/server.rs::run_windows`) is created with no explicit security descriptor, inheriting the default (broad) DACL — add an owner-only DACL to match the Unix `0700`/`0600` treatment
 - [x] Medium: Windows auth-token file (`server.rs::token_path`) has no ACL hardening — Unix gets `chmod 0600`, Windows has nothing; combined with the pipe DACL gap, another local user could read the token and impersonate an authenticated client
 - [x] Low/Medium: document the trust boundary for project-level `.anvil/config.toml` (an untrusted cloned repo can set `providers.custom.base_url` to redirect API-key-bearing requests) in `docs/config-reference.md`, matching the existing `custom.rs` trust-boundary comment from Phase 14
 - [x] Low: `server.rs` token comparison (`provided != Some(token.as_str())`) is not constant-time — swap to `subtle::ConstantTimeEq`
@@ -364,8 +364,8 @@
 - [x] `anvil doctor --fix` — auto-remediate common issues found by 17.2's `doctor` (pull a missing Ollama model, scaffold a default config)
 
 ### 16.5 Wrap-up
-- [x] `cargo test --workspace`, `cargo clippy --workspace`, `cargo fmt --check` all green locally (2026-07-23; required fixing several compile errors left over from the crates.io decoupling — stale `anvil_core` imports/types in `tpt-anvil-providers`, a `commands.rs`/`registry.rs` type mismatch between `anvil_core` and the new decoupled `tpt_anvil_providers::types`, plus a real config-merge bug below)
-- [x] Fixed **real bug**: `anvil-config`'s `AnvilConfig::merge_with`/`HasMerge` merged already-defaulted structs field-by-field, so an overlay explicitly setting a field to its type's default value (e.g. `inference.backend = "ollama"`, which is also the default) was indistinguishable from not setting it at all, and silently kept the base value instead. Replaced with merging raw TOML tables before deserializing once (`ConfigLoader::load` + `merge_toml_values` in `loader.rs`); added per-field `#[serde(default = ...)]` across `schema.rs` so partial tables deserialize correctly
+- [x] `cargo test --workspace`, `cargo clippy --workspace`, `cargo fmt --check` all green locally (2026-07-23; required fixing several compile errors left over from the crates.io decoupling — stale `tpt_anvil_core` imports/types in `tpt-anvil-providers`, a `commands.rs`/`registry.rs` type mismatch between `tpt_anvil_core` and the new decoupled `tpt_anvil_providers::types`, plus a real config-merge bug below)
+- [x] Fixed **real bug**: `tpt-anvil-config`'s `AnvilConfig::merge_with`/`HasMerge` merged already-defaulted structs field-by-field, so an overlay explicitly setting a field to its type's default value (e.g. `inference.backend = "ollama"`, which is also the default) was indistinguishable from not setting it at all, and silently kept the base value instead. Replaced with merging raw TOML tables before deserializing once (`ConfigLoader::load` + `merge_toml_values` in `loader.rs`); added per-field `#[serde(default = ...)]` across `schema.rs` so partial tables deserialize correctly
 - [x] Fixed hardcoded/stale model handling: `OpenAiProvider`/`AnthropicProvider::list_models()` now call the provider's real `/models` endpoint instead of returning a static list; removed hardcoded fallback model ids in `registry.rs`/`schema.rs`/`types.rs` in favor of an explicit config error ("model names change too often to hardcode a default")
 - [x] Document new config sections in `docs/config-reference.md`
 - [ ] Manual smoke test: multi-provider cost routing, secret redaction, and a deliberately broken `/fix` through the VS Code extension (blocked on the pipeline wiring above)
@@ -377,34 +377,34 @@
 > A benchmarking tool that runs a suite of coding tasks against a model (local or cloud), grades results objectively (compiler/lint/test pass-rate, not a quality judgment), and stores a scorecard so models are comparable across versions and over time. Core suite rotates on a staggered ~6-month-per-task schedule so it never fully calcifies while nearby runs stay comparable; adaptive slice generates model-specific weak-spot tasks but is walled off from the comparable score. Capped at 30 stored scorecards, LRU eviction by last-run date. Full design: `C:\Users\Phillip\.claude\plans\do-you-think-its-cosmic-falcon.md`.
 
 ### 18.1 Data model & pure logic (no I/O)
-- [x] `crates/anvil-capabilities/src/benchmark/mod.rs` — module root, re-exports; add `pub mod benchmark;` to `lib.rs`
-- [x] `crates/anvil-capabilities/src/benchmark/suite.rs` — `CoreTask`/`AdaptiveTask` types, TOML deserialization (`[verify]` reuses existing `verify::VerifyConfig` directly), `active_tasks(pool, at) -> Vec<&CoreTask>` pure staggered-rotation filter (`introduced_at <= at < retires_at`)
-- [x] `crates/anvil-capabilities/src/benchmark/scorecard.rs` — `TaskKind`, `TaskRunResult` (pass/fail, latency, prompt/completion tokens, cost, errors), `ModelScorecard` (`core_task_ids_run`, `core_results`, `adaptive_results`, `core_score`, `adaptive_score: Option<f64>`, totals)
-- [x] `crates/anvil-capabilities/src/benchmark/store.rs` — `BenchmarkStore`: cap-30 LRU by `last_run_at` (evict via `min_by_key`, not FIFO), retain-then-insert dedup by `(provider, model_id)`, `load`/`save` JSON to `~/.config/anvil/benchmarks.json` (mirrors `tpt-anvil-providers::recent_models::RecentModels`)
-- [x] `crates/anvil-capabilities/src/benchmark/comparison.rs` — `compare(a, b) -> ComparableResult`: intersect `core_task_ids_run`, recompute both scores restricted to the shared subset, report excluded-per-side tasks (handles suite rotation between two runs honestly)
-- [x] Add `BenchmarkConfigSchema`/`AdaptiveConfigSchema` to `crates/anvil-config/src/schema.rs` (`enabled`, `core_suite_path`, `rotation_period_days` default 180, `stagger_interval_days` default 30, `max_stored` default 30, nested `adaptive.{enabled, evaluator_provider, evaluator_model, max_tasks_per_run}`) — every field `#[serde(default = ...)]` per the Phase 16.5 merge-bug lesson; add `benchmark: BenchmarkConfigSchema` to `AnvilConfig`
-- [x] Unit tests: `active_tasks` boundary cases + staggered-pool overlap test; scorecard scoring never mixes core/adaptive; `store.rs` LRU-by-timestamp (not insertion order) + re-record-replaces + load/save round-trip + missing-file-empty; `comparison.rs` partial- and full-overlap cases; `anvil-config` partial-`[benchmark]`-table merge test (mirrors `loader.rs:166`'s override-equal-to-default regression test)
+- [x] `crates/tpt-anvil-capabilities/src/benchmark/mod.rs` — module root, re-exports; add `pub mod benchmark;` to `lib.rs`
+- [x] `crates/tpt-anvil-capabilities/src/benchmark/suite.rs` — `CoreTask`/`AdaptiveTask` types, TOML deserialization (`[verify]` reuses existing `verify::VerifyConfig` directly), `active_tasks(pool, at) -> Vec<&CoreTask>` pure staggered-rotation filter (`introduced_at <= at < retires_at`)
+- [x] `crates/tpt-anvil-capabilities/src/benchmark/scorecard.rs` — `TaskKind`, `TaskRunResult` (pass/fail, latency, prompt/completion tokens, cost, errors), `ModelScorecard` (`core_task_ids_run`, `core_results`, `adaptive_results`, `core_score`, `adaptive_score: Option<f64>`, totals)
+- [x] `crates/tpt-anvil-capabilities/src/benchmark/store.rs` — `BenchmarkStore`: cap-30 LRU by `last_run_at` (evict via `min_by_key`, not FIFO), retain-then-insert dedup by `(provider, model_id)`, `load`/`save` JSON to `~/.config/anvil/benchmarks.json` (mirrors `tpt-anvil-providers::recent_models::RecentModels`)
+- [x] `crates/tpt-anvil-capabilities/src/benchmark/comparison.rs` — `compare(a, b) -> ComparableResult`: intersect `core_task_ids_run`, recompute both scores restricted to the shared subset, report excluded-per-side tasks (handles suite rotation between two runs honestly)
+- [x] Add `BenchmarkConfigSchema`/`AdaptiveConfigSchema` to `crates/tpt-anvil-config/src/schema.rs` (`enabled`, `core_suite_path`, `rotation_period_days` default 180, `stagger_interval_days` default 30, `max_stored` default 30, nested `adaptive.{enabled, evaluator_provider, evaluator_model, max_tasks_per_run}`) — every field `#[serde(default = ...)]` per the Phase 16.5 merge-bug lesson; add `benchmark: BenchmarkConfigSchema` to `AnvilConfig`
+- [x] Unit tests: `active_tasks` boundary cases + staggered-pool overlap test; scorecard scoring never mixes core/adaptive; `store.rs` LRU-by-timestamp (not insertion order) + re-record-replaces + load/save round-trip + missing-file-empty; `comparison.rs` partial- and full-overlap cases; `tpt-anvil-config` partial-`[benchmark]`-table merge test (mirrors `loader.rs:166`'s override-equal-to-default regression test)
 
 ### 18.2 Fixture suite
-- [x] Author 8–12 seed core tasks (rust/typescript/python; common weak spots — borrow checker, async misuse, off-by-one, null-handling) under `crates/anvil-capabilities/benchmarks/core/*.toml`, staggered `introduced_at` dates
-- [x] Shared per-language scaffold fixtures under `crates/anvil-capabilities/benchmarks/scaffold/{rust,typescript,python,go}/` (reused across tasks of that language rather than duplicated per-task)
+- [x] Author 8–12 seed core tasks (rust/typescript/python; common weak spots — borrow checker, async misuse, off-by-one, null-handling) under `crates/tpt-anvil-capabilities/benchmarks/core/*.toml`, staggered `introduced_at` dates
+- [x] Shared per-language scaffold fixtures under `crates/tpt-anvil-capabilities/benchmarks/scaffold/{rust,typescript,python,go}/` (reused across tasks of that language rather than duplicated per-task)
 - [x] Embed the suite into the `anvil` binary at compile time (build.rs step or `include_str!`/glob); `core_suite_path` config becomes a local-dev-only override
 
 ### 18.3 Execution engine
-- [x] `crates/anvil-capabilities/src/benchmark/runner.rs` — dispatch via `InferenceBackend::complete` (local) or a small non-streaming `CloudProvider` conversion pair (cloud — do not reuse `commands.rs`'s private streaming-oriented `to_provider_request`/`from_provider_chunk`); extract code block via `diff::extract_code_block`; grade via `verify::verify_patch` against a throwaway temp project root seeded from the task's scaffold; record latency/tokens/cost (`router::cost::estimate_cost` for cloud, `None` for local)
+- [x] `crates/tpt-anvil-capabilities/src/benchmark/runner.rs` — dispatch via `InferenceBackend::complete` (local) or a small non-streaming `CloudProvider` conversion pair (cloud — do not reuse `commands.rs`'s private streaming-oriented `to_provider_request`/`from_provider_chunk`); extract code block via `diff::extract_code_block`; grade via `verify::verify_patch` against a throwaway temp project root seeded from the task's scaffold; record latency/tokens/cost (`router::cost::estimate_cost` for cloud, `None` for local)
 - [x] Fake `InferenceBackend`/`CloudProvider` test doubles (mirroring `router.rs`'s existing `MockProvider`) driving a task end-to-end without real models/network
 
 ### 18.4 Adaptive slice
-- [x] `crates/anvil-capabilities/src/benchmark/adaptive.rs` — load target model's prior scorecard failures, prompt a configured evaluator model (separate from model under test) to generate one new task targeting the same weakness differently; grade via `verify_patch` when possible, else judge-rubric fallback tagged `[judge-rubric, no compiler verification]`
+- [x] `crates/tpt-anvil-capabilities/src/benchmark/adaptive.rs` — load target model's prior scorecard failures, prompt a configured evaluator model (separate from model under test) to generate one new task targeting the same weakness differently; grade via `verify_patch` when possible, else judge-rubric fallback tagged `[judge-rubric, no compiler verification]`
 - [x] Response-parsing unit tests incl. malformed-response → judge-rubric fallback; assert `adaptive_score` never leaks into `core_score`
 
 ### 18.5 CLI
-- [x] `crates/anvil-daemon/src/cli.rs` — `Commands::Benchmark(BenchmarkArgs)` alongside `Start/Stop/Status/Auth/Models`; `BenchmarkCommands::{Run{target, no_adaptive, project}, Report{compare}}`; `handle_benchmark` follows `list_models()`'s existing `ConfigLoader`/registry construction pattern; wire into `main.rs` dispatch
+- [x] `crates/tpt-anvil-daemon/src/cli.rs` — `Commands::Benchmark(BenchmarkArgs)` alongside `Start/Stop/Status/Auth/Models`; `BenchmarkCommands::{Run{target, no_adaptive, project}, Report{compare}}`; `handle_benchmark` follows `list_models()`'s existing `ConfigLoader`/registry construction pattern; wire into `main.rs` dispatch
 - [ ] `clap::try_parse_from` argument-parsing test for `BenchmarkCommands`
 
 ### 18.6 RPC
-- [x] `crates/anvil-core/src/ipc.rs` — `BenchmarkRunParams{provider, model_id, include_adaptive}`, `BenchmarkReportParams{compare: Option<[String;2]>}` next to existing `SlashCommandParams`
-- [x] `crates/anvil-daemon/src/server.rs` — `"benchmark_run"`/`"benchmark_report"` match arms in `handle_rpc` (after `"slash_command"`, before the `other =>` catch-all); `benchmark_progress` notification per completed task (mirrors existing `stream_token` notifications); `BenchmarkRunner` constructed once at daemon startup alongside `CommandHandler` rather than bloating per-request `HandlerConfig`
+- [x] `crates/tpt-anvil-core/src/ipc.rs` — `BenchmarkRunParams{provider, model_id, include_adaptive}`, `BenchmarkReportParams{compare: Option<[String;2]>}` next to existing `SlashCommandParams`
+- [x] `crates/tpt-anvil-daemon/src/server.rs` — `"benchmark_run"`/`"benchmark_report"` match arms in `handle_rpc` (after `"slash_command"`, before the `other =>` catch-all); `benchmark_progress` notification per completed task (mirrors existing `stream_token` notifications); `BenchmarkRunner` constructed once at daemon startup alongside `CommandHandler` rather than bloating per-request `HandlerConfig`
 
 ### 18.7 Docs & wrap-up
 - [x] Document `[benchmark]`/`[benchmark.adaptive]` config sections in `docs/config-reference.md`

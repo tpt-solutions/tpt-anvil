@@ -1,0 +1,51 @@
+[package]
+name = "tpt-anvil-daemon"
+description = "TPT Anvil background daemon and CLI"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["anvil", "daemon", "ipc", "json-rpc", "cli", "ai"]
+categories = ["command-line-utilities", "development-tools"]
+documentation = "https://docs.rs/tpt-anvil-daemon"
+homepage = "https://github.com/tpt-solutions/tpt-anvil"
+
+[[bin]]
+name = "anvil"
+path = "src/main.rs"
+
+[features]
+cuda = []
+rocm = []
+webgpu = []
+
+[dependencies]
+tpt-anvil-core = { path = "../tpt-anvil-core" }
+tpt-anvil-config = { path = "../tpt-anvil-config" }
+tpt-anvil-inference = { path = "../tpt-anvil-inference" }
+tpt-anvil-providers = { path = "../tpt-anvil-providers" }
+tpt-anvil-indexer = { path = "../tpt-anvil-indexer" }
+tpt-anvil-capabilities = { path = "../tpt-anvil-capabilities" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+dirs = { workspace = true }
+rand = "0.8"
+subtle = "2"
+reqwest = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true }

@@ -1,0 +1,31 @@
+[package]
+name = "tpt-anvil-capabilities"
+description = "AI slash command capabilities for TPT Anvil"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["anvil", "ai", "slash-commands", "code-generation", "diff", "benchmark"]
+categories = ["development-tools", "command-line-utilities"]
+documentation = "https://docs.rs/tpt-anvil-capabilities"
+homepage = "https://github.com/tpt-solutions/tpt-anvil"
+
+[dependencies]
+tpt-anvil-core = { path = "../tpt-anvil-core" }
+tpt-anvil-config = { path = "../tpt-anvil-config" }
+tpt-anvil-inference = { path = "../tpt-anvil-inference" }
+tpt-anvil-providers = { path = "../tpt-anvil-providers" }
+tpt-anvil-indexer = { path = "../tpt-anvil-indexer" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+once_cell = { workspace = true }
+dirs = { workspace = true }
+toml = "0.8"

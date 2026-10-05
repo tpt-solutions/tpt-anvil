@@ -12,7 +12,7 @@
 # Build from source
 git clone https://github.com/tpt-solutions/tpt-anvil
 cd tpt-anvil
-cargo install --path crates/anvil-daemon
+cargo install --path crates/tpt-anvil-daemon
 
 # Or download a pre-built binary from GitHub Releases
 ```

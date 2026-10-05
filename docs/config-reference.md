@@ -28,7 +28,7 @@ Config files are TOML. Two locations are checked (project overrides user):
 ### Hardware acceleration
 
 Local backends (`llama_cpp`, `candle`) can offload work to a GPU. Acceleration
-is opt-in at build time via Cargo feature flags on the `anvil-inference` crate:
+is opt-in at build time via Cargo feature flags on the `tpt-anvil-inference` crate:
 
 | Feature | Backend(s) | Hardware |
 |---------|------------|----------|
@@ -39,7 +39,7 @@ is opt-in at build time via Cargo feature flags on the `anvil-inference` crate:
 Example:
 
 ```sh
-cargo build --release -p anvil-daemon --features "anvil-inference/candle,anvil-inference/cuda"
+cargo build --release -p tpt-anvil-daemon --features "tpt-anvil-inference/candle,tpt-anvil-inference/cuda"
 ```
 
 When no acceleration feature is compiled in, or `gpu_layers = 0`, backends run

@@ -45,7 +45,7 @@ Standalone building blocks that exist and are unit-tested, but aren't yet wired 
 └────────────────┬────────────────────┘
                  │ JSON-RPC (Unix socket / named pipe)
 ┌────────────────▼────────────────────┐
-│         anvil-daemon (Rust)         │
+│         tpt-anvil-daemon (Rust)         │
 │  ┌─────────────┐ ┌───────────────┐  │
 │  │  Inference  │ │   Indexer     │  │
 │  │  Backends   │ │  Tree-sitter  │  │
@@ -66,7 +66,7 @@ Standalone building blocks that exist and are unit-tested, but aren't yet wired 
 
 ```bash
 # Install the daemon
-cargo install --path crates/anvil-daemon
+cargo install --path crates/tpt-anvil-daemon
 
 # Pull a model
 ollama pull deepseek-coder:6.7b

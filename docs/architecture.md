@@ -17,17 +17,17 @@ TPT Anvil follows a client–server architecture where a long-running Rust daemo
                  │ Unix socket ($XDG_RUNTIME_DIR/anvil/anvil.sock)
                  │ Named pipe on Windows
 ┌────────────────▼────────────────────────┐
-│           anvil-daemon (Rust)           │
+│           tpt-anvil-daemon (Rust)           │
 │                                         │
 │  ┌──────────────────────────────────┐   │
-│  │       anvil-capabilities         │   │
+│  │       tpt-anvil-capabilities         │   │
 │  │  /generate  /test  /explain      │   │
 │  │  /fix  /docs  diff engine        │   │
 │  │  conversation history            │   │
 │  └───────┬──────────────┬───────────┘   │
 │          │              │               │
 │  ┌───────▼──────┐ ┌─────▼───────────┐  │
-│  │anvil-inference│ │ tpt-anvil-indexer   │  │
+│  │tpt-anvil-inference│ │ tpt-anvil-indexer   │  │
 │  │  InferenceBE  │ │ Tree-sitter AST │  │
 │  │  ┌──────────┐ │ │ BM25 (FTS5)    │  │
 │  │  │  Ollama  │ │ │ sqlite-vec     │  │
@@ -41,7 +41,7 @@ TPT Anvil follows a client–server architecture where a long-running Rust daemo
 │  │  Azure   Custom endpoint         │  │
 │  └──────────────────────────────────┘  │
 │  ┌──────────────────────────────────┐  │
-│  │       anvil-config               │  │
+│  │       tpt-anvil-config               │  │
 │  │  TOML  hot-reload  keychain      │  │
 │  └──────────────────────────────────┘  │
 └─────────────────────────────────────────┘
@@ -51,13 +51,13 @@ TPT Anvil follows a client–server architecture where a long-running Rust daemo
 
 | Crate | Role |
 |-------|------|
-| `anvil-core` | Shared types, error types, IPC protocol definitions |
-| `anvil-config` | Config schema, file loading, hot-reload watcher |
-| `anvil-inference` | `InferenceBackend` trait; Ollama, llama.cpp, candle |
+| `tpt-anvil-core` | Shared types, error types, IPC protocol definitions |
+| `tpt-anvil-config` | Config schema, file loading, hot-reload watcher |
+| `tpt-anvil-inference` | `InferenceBackend` trait; Ollama, llama.cpp, candle |
 | `tpt-anvil-providers` | Cloud provider trait; OpenAI, Anthropic, OpenRouter, Azure, custom |
 | `tpt-anvil-indexer` | Tree-sitter parsing, SQLite FTS5, symbol extraction, file watcher |
-| `anvil-capabilities` | Slash commands, diff engine, context assembly, conversation store |
-| `anvil-daemon` | Main binary: IPC server, CLI, daemon lifecycle |
+| `tpt-anvil-capabilities` | Slash commands, diff engine, context assembly, conversation store |
+| `tpt-anvil-daemon` | Main binary: IPC server, CLI, daemon lifecycle |
 
 ## IPC Protocol
 

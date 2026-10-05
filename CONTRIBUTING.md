@@ -1,16 +1,16 @@
 # Contributing to TPT Anvil
 
-Thank you for your interest in contributing to TPT Anvil!
+Thank you for your interest in TPT Anvil!
 
-## Developer Certificate of Origin
+## Contributions are issues only
 
-By making a contribution to this project, you certify that you have the right to submit it under the open source license indicated in the [LICENSE](LICENSE) file, and you agree to the [Developer Certificate of Origin v1.1](https://developercertificate.org/).
+This project does **not** accept pull requests. All contributions happen through [GitHub issues](../../issues): bug reports, feature requests, and ideas. Pull requests opened from forks will be closed without review.
 
-Add a `Signed-off-by` line to your commits:
+Please use the issue templates:
+- **Bug report** — for reproducible bugs
+- **Feature request** — for new functionality
 
-```
-git commit -s -m "your commit message"
-```
+The sections below are for building and testing the project locally, e.g. to reproduce a bug before reporting it.
 
 ## Prerequisites
 
@@ -44,19 +44,6 @@ cargo test
 - TypeScript: `eslint` + `tsc --noEmit`
 - Kotlin: `ktlint`
 
-## Submitting Changes
-
-1. Fork the repo and create a feature branch
-2. Make your changes with appropriate tests
-3. Ensure `cargo test` and `cargo clippy` pass
-4. Open a pull request with a clear description
-
-## Reporting Issues
-
-Please use the GitHub issue templates:
-- **Bug report** — for reproducible bugs
-- **Feature request** — for new functionality
-
 ## License
 
-By contributing, you agree your contributions are licensed under the same dual MIT/Apache-2.0 terms as the project.
+Anything you submit in an issue may be used under the same dual MIT/Apache-2.0 terms as the project.

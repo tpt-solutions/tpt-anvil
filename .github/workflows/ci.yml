@@ -106,10 +106,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2.0.0
+      - name: Install cargo-audit and cargo-deny
+        uses: taiki-e/install-action@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install cargo-deny
-        uses: taiki-e/install-action@cargo-deny
+          tool: cargo-audit,cargo-deny
+      - name: Run cargo audit
+        run: cargo audit
       - name: Run cargo deny (advisories + licenses)
         run: cargo deny check advisories licenses
