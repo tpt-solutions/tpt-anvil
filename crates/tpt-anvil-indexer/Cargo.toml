@@ -39,7 +39,7 @@ tree-sitter-php = "0.24"
 tree-sitter-c-sharp = "0.23"
 
 # SQLite vector store
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 # BM25 / full-text search
 tantivy = "0.26"
