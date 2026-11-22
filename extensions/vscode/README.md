@@ -21,14 +21,14 @@ The Anvil daemon must be installed and running. See the
 
 ## Extension Settings
 
-| Setting | Description |
-|---------|-------------|
-| `anvil.backend` | Local inference backend (`ollama`, `llama_cpp`, `candle`) |
-| `anvil.model` | Model to use for completions |
-| `anvil.ollamaUrl` | Ollama server URL |
-| `anvil.cloudProvider` | Cloud provider for fallback (empty for local-only) |
-| `anvil.maxTokens` | Maximum tokens to generate |
-| `anvil.temperature` | Sampling temperature (0.0–1.0) |
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `anvil.backend` | Local inference backend (`ollama`, `llama_cpp`, `candle`) | `ollama` |
+| `anvil.model` | Model to use for completions | `deepseek-coder:6.7b` |
+| `anvil.ollamaUrl` | Ollama server URL | `http://localhost:11434` |
+| `anvil.cloudProvider` | Cloud provider for fallback: `openai`, `anthropic`, `openrouter`, `azure`, or `custom` | `""` (local only) |
+| `anvil.maxTokens` | Maximum tokens to generate | `2048` |
+| `anvil.temperature` | Sampling temperature (0.0–1.0) | `0.2` |
 
 ## License
 

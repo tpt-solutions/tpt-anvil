@@ -75,6 +75,8 @@ anyway:
 - The auth token is written with mode `0600` and regenerated on every run.
 - The socket itself is created with mode `0600` inside a `0700` runtime directory.
 - Binding is guarded against a TOCTOU race.
+- The token is compared in constant time (`subtle::ConstantTimeEq`).
+- Concurrent in-flight requests are capped at 32 to bound local resource use.
 - HTTP error bodies returned by upstream providers are truncated and scrubbed before logging.
 
 ## Dependencies
