@@ -29,6 +29,10 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 - Error scrubbing: HTTP error bodies are truncated and redacted before logging.
 
 ### Notes
+- Model lists are fetched live from each provider's `/models` endpoint. No provider has a
+  hardcoded default model; an unset `model` is a configuration error.
+- Azure OpenAI is excluded from the router's candidate pool, because its configuration has no
+  model id to cost against. It is reachable only as `providers.active`.
 - This crate is deliberately decoupled from `tpt-anvil-core` and `tpt-anvil-config` so it can
   be published standalone to crates.io. It defines its own `types.rs`; bridging to core types
   happens in `tpt-anvil-capabilities` via explicit conversions. Please do not re-add a core

@@ -10,6 +10,7 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Upgraded `rand` to 0.10; per-run auth tokens are generated with `rand::rng()`.
 - `anvil benchmark run` now reports its denominator as `[passed/scorable of total]`
   so a score is never mistaken for a full-suite result when tasks were skipped.
 - `anvil benchmark report` annotates stored scores computed over a reduced task
@@ -29,6 +30,8 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
   request except `health`.
 - Unix socket security: `0700` runtime directory, `0600` socket, and a fix for the TOCTOU
   race during bind.
+- Auth token comparison is constant-time (`subtle::ConstantTimeEq`).
+- The accept loop caps concurrent in-flight requests at 32 with a semaphore.
 
 ### Fixed
 - `benchmark run` now dispatches to local inference backends (`ollama`, `llama_cpp`,

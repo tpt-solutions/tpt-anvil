@@ -22,6 +22,8 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
   `AccelDevice`, `AccelPreference`, and `select_device`.
 
 ### Changed
+- Dependency upgrades: `candle-core`, `candle-nn`, and `candle-transformers` 0.11, and
+  `tokenizers` 0.23.
 - **Breaking:** crate renamed from `anvil-inference` to `tpt-anvil-inference` for
   workspace-wide naming consistency. Update `use` paths and `Cargo.toml` dependency keys
   accordingly.

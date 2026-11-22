@@ -10,6 +10,16 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `vault` module: `redact_text`, `redact_request`, and `log_redactions`, with built-in rules for
+  AWS, GitHub, OpenAI, Anthropic, and Slack keys, PEM private keys, JWTs, and generic
+  assignments, plus user `CustomPattern`s. Applied unconditionally in `CommandHandler::run`.
+- `verify` module: `verify_patch` runs the project's compiler, linter (on by default), and an
+  optional test run against a candidate patch, with one bounded retry that feeds the errors
+  back to the model.
+- Router and recent-model selection in `CommandHandler::run`, and Smart Context outlines in
+  `assemble_context_message`.
+- `benchmark` module: built-in tasks, `grade_task`, `core_score`, `ModelScorecard`,
+  `BenchmarkStore`, `comparison::compare`, and adaptive task generation.
 - `syntax` module: toolchain-free syntax validation via tree-sitter —
   `syntax_errors`, `is_syntactically_valid`, `grammar_for`, and `format_errors`.
   Reports `ERROR`/`MISSING` nodes with 1-based positions, bounded to 10
@@ -21,6 +31,12 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 - `extract_fenced_tag` for pulling a block with one specific fence info string.
 - Slash command engine: `Command` and `CommandHandler` covering `/generate`, `/test`,
   `/explain`, `/fix`, `/docs`, and `/chat`.
+
+### Security
+- Verifier writes are confined to the project root. `resolve_target` canonicalizes the path and
+  rejects absolute and `..` paths. The backup file moved to a random name in the OS temp dir.
+- Prompt-injection hardening: chat-template control tokens in file and chunk content are
+  neutralized, and code fences grow past any embedded backtick run.
 
 ### Fixed
 - **Benchmark scoring silently shrank the denominator.** Both TypeScript tasks

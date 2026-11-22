@@ -34,9 +34,12 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 - Pinned `tree-sitter-python` to `0.23` to match the other grammar crates. Under `0.25`
   the generated grammar's `LANGUAGE` constant is incompatible with `tree-sitter 0.24`,
   so `set_language` failed and Python symbol/call-edge extraction silently returned
-  nothing.
+  nothing. The pin has since been lifted: `tree-sitter-python` is now 0.25, alongside
+  `tree-sitter` 0.27.
 
 ### Changed
+- Dependency upgrades: `tree-sitter` 0.27 and the grammar crates, `rusqlite` 0.42, and
+  `tantivy` 0.27.
 - `store::blob_to_vector` now uses `slice::as_chunks` instead of `chunks_exact`, silencing
   the `chunks_exact` constant-chunk-size lint that failed `clippy -D warnings`.
 

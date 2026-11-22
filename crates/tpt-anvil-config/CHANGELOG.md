@@ -23,6 +23,7 @@ This crate adheres to [Semantic Versioning](https://semver.org/).
 - `BenchmarkConfigSchema` and `AdaptiveConfigSchema` for the model benchmark suite.
 
 ### Changed
+- Dependency upgrades: `toml` 1.1 and `dirs` 7.
 - **Breaking:** crate renamed from `anvil-config` to `tpt-anvil-config` for workspace-wide
   naming consistency. Update `use` paths and `Cargo.toml` dependency keys accordingly.
 - `ConfigLoader::load` now merges layers as raw `toml::Value` tables before deserializing,

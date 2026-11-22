@@ -25,6 +25,19 @@ This project uses [Semantic Versioning](https://semver.org/).
   which failed verification as a syntax error at 1:1.
 
 ### Added
+- Vault secret redaction on every request: API keys, tokens, and PEM private keys are
+  redacted before a prompt reaches a cloud provider. Only the rule label and count are logged.
+- Smart Context: large files and oversized related chunks are sent as AST outlines
+  (signatures, not bodies) instead of full source.
+- Cost-based provider router (opt-in `[router]`, with `pinned` provider support) and a
+  recent-models tracker (last 5 pairs used, persisted to `recent_models.json`).
+- Verifier: `verify_patch` runs the compiler/type-checker and linter (test run optional) on
+  generated patches, with one bounded retry that feeds errors back to the model. Results are
+  included in the RPC response; the IDE warning banner is not built yet.
+- Model benchmark suite: `anvil benchmark run` and `anvil benchmark report`, with built-in
+  tasks, adaptive task generation, and scorecard comparison.
+- `anvil init` setup wizard and `anvil doctor` diagnostics.
+- CI: `cargo-deny` advisory and license scanning.
 - Monorepo scaffold: Cargo workspace + npm workspace
 - `anvil-core`: shared types, IPC protocol (JSON-RPC 2.0), error types
 - `anvil-config`: TOML config with hot-reload, project + user fallback chain
@@ -83,6 +96,8 @@ This project uses [Semantic Versioning](https://semver.org/).
   found" / "Python was not found".
 
 ### Changed
+- Dependency upgrades: `tree-sitter` 0.27 and its grammar crates, `rusqlite` 0.42, `tantivy`
+  0.27, `candle` 0.11, `tokenizers` 0.23, `toml` 1.1, `dirs` 7, and `rand` 0.10.
 - **Breaking:** All crates now carry the `tpt-anvil-` prefix. `anvil-core`, `anvil-config`,
   `anvil-inference`, `anvil-capabilities`, and `anvil-daemon` are renamed to `tpt-anvil-core`,
   `tpt-anvil-config`, `tpt-anvil-inference`, `tpt-anvil-capabilities`, and `tpt-anvil-daemon`
@@ -102,3 +117,12 @@ This project uses [Semantic Versioning](https://semver.org/).
 - `anvil-daemon/pid.rs`: PID hardening with stale cleanup
 - `tpt-anvil-providers/retry.rs`: Error scrubbing with `scrub_error_message()`
 - `anvil-config/schema.rs`: Added `VaultConfig`, `SmartContextConfig`, `RouterConfigSchema`, `VerifyConfigSchema`
+
+### Security
+- IPC token comparison is constant-time (`subtle::ConstantTimeEq`).
+- The daemon caps concurrent in-flight requests at 32.
+- The verifier confines writes to the project root. Absolute and `..` paths are rejected
+  before any filesystem write, and its backup file uses a random name in the OS temp dir.
+- Chat-template control tokens (for example `<|im_start|>`) in file and chunk content are
+  neutralized before prompt assembly, and code fences grow past any embedded backtick run.
+- Provider error messages are scrubbed before they are logged.
