@@ -67,12 +67,14 @@ fn sanitize(label: &str) -> String {
         .collect()
 }
 
-/// A monotonic-ish suffix so concurrent runs never collide.
-fn unique_suffix() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0)
+/// A per-process unique suffix so concurrent sandboxes never collide.
+///
+/// A clock reading is not enough: on Windows two calls in the same tick get the
+/// same value, and one sandbox's `Drop` would then delete the directory another
+/// in-flight task is still verifying in.
+fn unique_suffix() -> u64 {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Grade a single core task against the given code output.
