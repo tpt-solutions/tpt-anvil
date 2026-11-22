@@ -43,10 +43,19 @@ impl Default for VerifyConfig {
 ///   installed locally, so `npx tsc` cannot resolve a real compiler
 /// * `program not found` — the launcher could not be spawned
 /// * `is not recognized as an internal or external command`
+/// * `failed to run <cmd>: ...` — the binary could not be spawned at all (e.g.
+///   `cargo` absent from `PATH`, reported as `No such file or directory`).
+///   `run_command` is the only producer of this prefix, and it appears at the
+///   very start of the output, so a real compiler message that merely mentions
+///   "failed to run" (e.g. cargo's `failed to run custom build command`) is
+///   not matched.
 ///
 /// Returns `true` when the output indicates a missing toolchain rather than a
 /// genuine compile/lint/test failure.
 pub fn is_toolchain_missing(output: &str) -> bool {
+    if output.starts_with("failed to run ") {
+        return true;
+    }
     const SIGNALS: &[&str] = &[
         "No module named",
         "is not the tsc command you are looking for",
@@ -790,6 +799,23 @@ mod tests {
         assert!(is_toolchain_missing("failed to run npx: program not found"));
         assert!(is_toolchain_missing(
             "'npx' is not recognized as an internal or external command"
+        ));
+    }
+
+    #[test]
+    fn is_toolchain_missing_detects_absent_cargo_binary() {
+        // Exact text `run_command` produces when `cargo` cannot be spawned.
+        assert!(is_toolchain_missing(
+            "failed to run cargo: No such file or directory (os error 2)"
+        ));
+    }
+
+    #[test]
+    fn is_toolchain_missing_ignores_cargo_build_script_failure() {
+        // A real build-script failure mentions "failed to run" mid-output, not
+        // as the spawn-failure prefix, so it must still count as a defect.
+        assert!(!is_toolchain_missing(
+            "\nerror: failed to run custom build command for `foo v0.1.0`"
         ));
     }
 
