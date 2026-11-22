@@ -120,7 +120,7 @@ pub async fn run(project_root: Option<&str>) -> Result<()> {
 
     // Generate per-run authentication token
     let mut token_buf = [0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut token_buf);
+    rand::Rng::fill_bytes(&mut rand::rng(), &mut token_buf);
     let token: Arc<String> = Arc::new(token_buf.iter().map(|b| format!("{b:02x}")).collect());
 
     let tp = token_path();
